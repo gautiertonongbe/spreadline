@@ -20,7 +20,7 @@ from math import log10
 from typing import Any
 
 from app.core.clock import ensure_utc, utcnow
-from app.core.money import ratio
+from app.core.money import display_score, ratio
 from app.models.enums import Confidence, TrendDirection
 
 #: Rank at which the relative score reaches zero. Ranks beyond a million are
@@ -215,7 +215,8 @@ def assess_demand(
 
     reasons.insert(
         0,
-        f"Relative demand score {score} derived from a median rank of {median_rank:,}"
+        f"Relative demand score {display_score(score)} derived from a median rank of "
+        f"{median_rank:,}"
         + (f" in {ranked[-1].rank_category}." if ranked and ranked[-1].rank_category else "."),
     )
 

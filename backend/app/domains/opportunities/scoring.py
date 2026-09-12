@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 
-from app.core.money import ratio, to_decimal
+from app.core.money import display, display_score, ratio, to_decimal
 from app.domains.opportunities.context import AnalysisContext
 from app.domains.risk.engine import RiskAssessmentResult
 from app.models.enums import Availability, Confidence, MatchStatus  # noqa: F401
@@ -151,7 +151,7 @@ def _profit_component(context: AnalysisContext, model: ScoringModel) -> ScoreCom
         name="profit",
         score=_interpolate(model.profit_curve, profit),
         weight=model.weight_profit,
-        basis=f"Net profit of {profit} per unit.",
+        basis=f"Net profit of {display(profit)} per unit.",
     )
 
 
@@ -228,7 +228,8 @@ def _demand_component(context: AnalysisContext, model: ScoringModel) -> ScoreCom
         score=score,
         weight=model.weight_demand,
         basis=(
-            f"Relative demand {demand.score} from a median rank of {demand.median_rank:,}"
+            f"Relative demand {display_score(demand.score)} from a median rank of "
+            f"{demand.median_rank:,}"
             f" ({demand.confidence.value} confidence)."
         ),
     )
@@ -250,7 +251,7 @@ def _competition_component(context: AnalysisContext, model: ScoringModel) -> Sco
         weight=model.weight_competition,
         basis=(
             f"{competition.seller_count} seller(s), pressure score "
-            f"{competition.pressure_score}/100."
+            f"{display_score(competition.pressure_score)}/100."
         ),
     )
 
@@ -299,7 +300,7 @@ def _risk_component(risk: RiskAssessmentResult, model: ScoringModel) -> ScoreCom
         name="risk",
         score=ratio(Decimal("100") - risk.score),
         weight=model.weight_risk,
-        basis=f"Risk level {risk.level.value} (score {risk.score}/100).",
+        basis=f"Risk level {risk.level.value} (score {display_score(risk.score)}/100).",
     )
 
 

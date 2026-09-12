@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  @apply bg-canvas text-primary antialiased;
+  font-feature-settings: "tnum" 1; /* tabular numerals: columns of money line up */
+}
+
+/* Numeric cells use tabular figures so a column of prices scans vertically. */
+.numeric {
+  @apply font-mono tabular-nums;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-canvas;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-border rounded;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-muted;
+}

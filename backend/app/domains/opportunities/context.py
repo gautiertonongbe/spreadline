@@ -72,13 +72,15 @@ class AnalysisContext:
     direction: Direction = Direction.CUSTOM
     sourcing_channel: SourcingChannel = SourcingChannel.ONLINE_ARBITRAGE
     analyzed_at: datetime = field(default_factory=utcnow)
+    #: Physical attributes, carried so that any recomputation (a stress
+    #: scenario, a what-if) prices the same unit as the base case. Without them
+    #: a scenario silently falls back to the default weight and volume, and a
+    #: "downside" can come out cheaper to fulfil than the case it is stressing.
+    weight_lb: Decimal | None = None
+    cubic_feet: Decimal | None = None
     #: True only when every provider that contributed reports live market data.
     is_live_data: bool = False
     warnings: list[str] = field(default_factory=list)
-
-    @property
-    def weight_lb(self) -> Decimal | None:
-        return None
 
     def summary(self) -> dict[str, Any]:
         return {

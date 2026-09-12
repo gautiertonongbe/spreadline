@@ -7,6 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, Query
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.api.deps import Auth, DbSession
 from app.domains.opportunities import service as opportunities
@@ -65,11 +66,39 @@ def list_opportunities(
         offset=offset,
     )
     return Page(
-        items=[OpportunitySummary.model_validate(row) for row in rows],
+        items=_with_titles(session, rows),
         total=total,
         limit=limit,
         offset=offset,
     )
+
+
+def _with_titles(session: Session, rows: list[Any]) -> list[OpportunitySummary]:
+    """Attach the product title to each row in one extra query.
+
+    Fetched as a batch rather than per row: a 100-row opportunity table should
+    cost two queries, not a hundred and one.
+    """
+    product_ids = {row.product_id for row in rows if row.product_id}
+    products = (
+        {
+            product.id: product
+            for product in session.scalars(
+                select(Product).where(Product.id.in_(product_ids))
+            )
+        }
+        if product_ids
+        else {}
+    )
+    items: list[OpportunitySummary] = []
+    for row in rows:
+        item = OpportunitySummary.model_validate(row)
+        product = products.get(row.product_id)
+        if product is not None:
+            item.title = product.title
+            item.brand = product.brand
+        items.append(item)
+    return items
 
 
 @router.get("/summary")

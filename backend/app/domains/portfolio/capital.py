@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 
-from app.core.money import money, pct_of, ratio
+from app.core.money import display, money, pct_of, ratio
 from app.models.enums import RiskLevel
 
 #: Multiplier applied to expected profit at each risk level when ranking. Not a
@@ -188,7 +188,7 @@ def _eligibility_failure(
             + "."
         )
     if candidate.unit_profit <= 0:
-        return f"Unit profit is {candidate.unit_profit}."
+        return f"Unit profit is {display(candidate.unit_profit)}."
     if candidate.unit_cost <= 0:
         return "Unit cost is zero or unknown, so a position cannot be sized."
     if candidate.risk_level.rank > constraints.max_risk_level.rank:
@@ -248,7 +248,8 @@ def allocate_capital(
                 Exclusion(
                     candidate.opportunity_id,
                     candidate.title,
-                    f"Only {remaining} of capital remains, below the minimum position size.",
+                    f"Only {display(remaining)} of capital remains, below the "
+                    "minimum position size.",
                 )
             )
             continue
@@ -301,7 +302,8 @@ def allocate_capital(
                 Exclusion(
                     candidate.opportunity_id,
                     candidate.title,
-                    f"A single unit at {candidate.unit_cost} does not fit the {limiting_reason}.",
+                    f"A single unit at {display(candidate.unit_cost)} does not fit "
+                    f"the {limiting_reason}.",
                 )
             )
             continue
@@ -312,7 +314,8 @@ def allocate_capital(
                 Exclusion(
                     candidate.opportunity_id,
                     candidate.title,
-                    f"Position of {capital} is below the {constraints.min_position_size} minimum.",
+                    f"Position of {display(capital)} is below the "
+                    f"{display(constraints.min_position_size)} minimum.",
                 )
             )
             continue
@@ -340,7 +343,7 @@ def allocate_capital(
 
     if remaining > 0 and allocations:
         notes.append(
-            f"{remaining} of capital is unallocated: the remaining candidates were "
+            f"{display(remaining)} of capital is unallocated: the remaining candidates were "
             "excluded by supply, concentration or eligibility limits rather than by capital."
         )
     if not allocations:

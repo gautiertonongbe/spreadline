@@ -77,3 +77,23 @@ def safe_mean(values: list[Decimal]) -> Decimal | None:
     if not values:
         return None
     return money(sum(values, ZERO) / Decimal(len(values)))
+
+
+def display(value: Decimal | int | float | str | None) -> str:
+    """Format a money amount for a human-readable string.
+
+    Storage precision is 4 decimal places so intermediate fee arithmetic does not
+    drift, but "71.6496 profit" in an explanation reads as noise. Anything the
+    operator reads goes through here; anything a machine reads keeps full
+    precision.
+    """
+    if value is None:
+        return "not available"
+    return f"{cents(value):,.2f}"
+
+
+def display_score(value: Decimal | int | float | None) -> str:
+    """Format a 0-100 score for display, without false precision."""
+    if value is None:
+        return "not available"
+    return f"{to_decimal(value).quantize(Decimal('1'), rounding=ROUND_HALF_UP)}"

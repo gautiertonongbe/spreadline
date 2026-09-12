@@ -1,0 +1,55 @@
+name: spreadline
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: spreadline
+      POSTGRES_PASSWORD: spreadline
+      POSTGRES_DB: spreadline
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      # The API waits for this rather than for the container merely existing:
+      # Postgres accepts connections several seconds after the container starts.
+      test: ["CMD-SHELL", "pg_isready -U spreadline -d spreadline"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://spreadline:spreadline@db:5432/spreadline
+      ENVIRONMENT: local
+      LOG_LEVEL: INFO
+      CORS_ORIGINS: http://localhost:3000
+      ENABLED_PROVIDERS: mock
+      SCHEDULER_ENABLED: "false"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    # Migrations run before the server, so a fresh volume comes up with a schema.
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  postgres-data:

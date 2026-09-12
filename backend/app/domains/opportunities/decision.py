@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 
+from app.core.money import display, display_score
 from app.domains.opportunities.context import AnalysisContext
 from app.domains.opportunities.scoring import OpportunityScore
 from app.domains.risk.engine import RiskAssessmentResult
@@ -116,8 +117,8 @@ def _build_gates(
             label="Positive net profit",
             passed=profitability.net_profit > 0,
             detail=(
-                f"Net profit {profitability.net_profit} per unit against a total cost of "
-                f"{profitability.total_cost}."
+                f"Net profit {display(profitability.net_profit)} per unit against a total cost of "
+                f"{display(profitability.total_cost)}."
             ),
             is_hard=True,
         )
@@ -147,9 +148,9 @@ def _build_gates(
     gates.append(
         Gate(
             code="min_profit",
-            label=f"Net profit at or above {policy.min_net_profit}",
+            label=f"Net profit at or above {display(policy.min_net_profit)}",
             passed=profitability.net_profit >= policy.min_net_profit,
-            detail=f"Net profit {profitability.net_profit}.",
+            detail=f"Net profit {display(profitability.net_profit)}.",
             is_hard=False,
         )
     )
@@ -191,9 +192,9 @@ def _build_gates(
     gates.append(
         Gate(
             code="data_quality",
-            label=f"Data quality at or above {policy.min_data_quality}",
+            label=f"Data quality at or above {display_score(policy.min_data_quality)}",
             passed=context.quality.score >= policy.min_data_quality,
-            detail=f"Data quality {context.quality.score}/100.",
+            detail=f"Data quality {display_score(context.quality.score)}/100.",
             is_hard=False,
         )
     )
@@ -202,7 +203,7 @@ def _build_gates(
             code="risk_level",
             label=f"Risk at or below {policy.max_risk_for_buy.value}",
             passed=risk.level.rank <= policy.max_risk_for_buy.rank,
-            detail=f"Risk level {risk.level.value} ({risk.score}/100).",
+            detail=f"Risk level {risk.level.value} ({display_score(risk.score)}/100).",
             is_hard=False,
         )
     )
@@ -245,9 +246,9 @@ def _build_gates(
     gates.append(
         Gate(
             code="score_threshold",
-            label=f"Score at or above {policy.min_score_for_buy}",
+            label=f"Score at or above {display_score(policy.min_score_for_buy)}",
             passed=score.total >= policy.min_score_for_buy,
-            detail=f"Score {score.total}/100.",
+            detail=f"Score {display_score(score.total)}/100.",
             is_hard=False,
         )
     )
@@ -262,12 +263,13 @@ def _reasons(context: AnalysisContext, score: OpportunityScore) -> list[str]:
     if profitability.roi is not None and profitability.roi > 0:
         reasons.append(
             f"{profitability.roi:.0%} projected ROI "
-            f"({profitability.net_profit} profit on "
-            f"{profitability.acquisition_cost} acquisition cost)"
+            f"({display(profitability.net_profit)} profit on "
+            f"{display(profitability.acquisition_cost)} acquisition cost)"
         )
     reasons.append(
-        f"Spread of {profitability.spread} before fees, "
-        f"{profitability.net_profit} after all {profitability.total_fees} of fees"
+        f"Spread of {display(profitability.spread)} before fees, "
+        f"{display(profitability.net_profit)} after all "
+        f"{display(profitability.total_fees)} of fees"
     )
 
     reference = context.target_prices.reference
@@ -290,7 +292,7 @@ def _reasons(context: AnalysisContext, score: OpportunityScore) -> list[str]:
     demand = context.demand
     if demand.score is not None and demand.score >= 60:
         reasons.append(
-            f"Strong demand: relative score {demand.score} from a median rank of "
+            f"Strong demand: relative score {display_score(demand.score)} from a median rank of "
             f"{demand.median_rank:,}"
         )
 
@@ -304,7 +306,8 @@ def _reasons(context: AnalysisContext, score: OpportunityScore) -> list[str]:
         ) / profitability.sale_price
         if headroom > 0:
             reasons.append(
-                f"Exit price can fall {headroom:.0%} to {profitability.breakeven_sale_price} "
+                f"Exit price can fall {headroom:.0%} to "
+                f"{display(profitability.breakeven_sale_price)} "
                 "before the position breaks even"
             )
     return reasons
@@ -339,7 +342,8 @@ def decide(
         return Decision(
             recommendation=Recommendation.PASS,
             headline=(
-                f"Score {score.total}/100 is below the {policy.min_score_for_review} "
+                f"Score {display_score(score.total)}/100 is below the "
+                f"{display_score(policy.min_score_for_review)} "
                 "threshold for further review."
             ),
             reasons=reasons,
@@ -352,7 +356,8 @@ def decide(
         return Decision(
             recommendation=Recommendation.BUY,
             headline=(
-                f"Score {score.total}/100 with {risk.level.value} risk; every threshold met."
+                f"Score {display_score(score.total)}/100 with {risk.level.value} risk; "
+                "every threshold met."
             ),
             reasons=reasons,
             risks=risks,
@@ -363,7 +368,7 @@ def decide(
     return Decision(
         recommendation=Recommendation.REVIEW,
         headline=(
-            f"Score {score.total}/100, held for review: "
+            f"Score {display_score(score.total)}/100, held for review: "
             + "; ".join(gate.label.lower() + " not met" for gate in soft_failures[:3])
             + ("." if len(soft_failures) <= 3 else f", and {len(soft_failures) - 3} more.")
         ),

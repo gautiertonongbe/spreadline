@@ -86,6 +86,35 @@ class TestCleanOpportunity:
             "combined_downside",
         }
 
+    async def test_scenarios_price_the_same_unit_as_the_base_case(
+        self, session, auth, registry
+    ):
+        """Every scenario must recompute against the product's real weight and
+        volume. When they fell back to the engine defaults, a heavier-than-default
+        unit was priced with a cheaper fulfilment fee inside the stress test, and
+        the demand shock came out *more* profitable than the case it was
+        stressing."""
+        result = await analyze_fixture(session, auth, registry, "sony-wh1000xm5")
+        scenarios = {item.scenario.key: item for item in result.stress.scenarios}
+        base = scenarios["base"]
+
+        assert base.net_profit == result.context.profitability.net_profit
+        # A shock can never improve the position it is shocking.
+        for key, scenario in scenarios.items():
+            if key == "base":
+                continue
+            assert scenario.net_profit <= base.net_profit, (
+                f"scenario {key} is more profitable than the base case"
+            )
+
+    async def test_demand_shock_increases_holding_cost(self, session, auth, registry):
+        result = await analyze_fixture(session, auth, registry, "sony-wh1000xm5")
+        scenarios = {item.scenario.key: item for item in result.stress.scenarios}
+        # Same prices, longer on the shelf: only the storage component moves.
+        assert scenarios["demand_shock"].sale_price == scenarios["base"].sale_price
+        assert scenarios["demand_shock"].months_in_storage > scenarios["base"].months_in_storage
+        assert scenarios["demand_shock"].net_profit < scenarios["base"].net_profit
+
     async def test_downside_scenarios_reduce_profit(self, session, auth, registry):
         result = await analyze_fixture(session, auth, registry, "sony-wh1000xm5")
         scenarios = {item.scenario.key: item for item in result.stress.scenarios}

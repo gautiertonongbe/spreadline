@@ -646,6 +646,8 @@ def build_context(
         competition=competition,
         direction=options.direction,
         sourcing_channel=options.sourcing_channel,
+        weight_lb=weight,
+        cubic_feet=cubic_feet,
         analyzed_at=utcnow(),
         is_live_data=source_is_live and target_is_live,
         warnings=all_warnings,
@@ -659,7 +661,9 @@ def evaluate(context: AnalysisContext, options: AnalysisOptions) -> AnalysisResu
     decision = decide(context, risk, score, policy=options.decision_policy)
     stress = None
     if options.run_stress_test:
-        stress = run_stress_test(context)
+        stress = run_stress_test(
+            context, weight_lb=context.weight_lb, cubic_feet=context.cubic_feet
+        )
     return AnalysisResult(context=context, risk=risk, score=score, decision=decision, stress=stress)
 
 

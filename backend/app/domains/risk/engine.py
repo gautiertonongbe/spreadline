@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 
-from app.core.money import ratio
+from app.core.money import display, display_score, ratio
 from app.domains.opportunities.context import AnalysisContext
 from app.models.enums import (
     AnomalyType,
@@ -140,7 +140,7 @@ def _price_volatility_signal(context: AnalysisContext) -> RiskSignal | None:
             f"{reference.window_days} days."
         ),
         evidence=[
-            f"Range {reference.minimum} to {reference.maximum} across "
+            f"Range {display(reference.minimum)} to {display(reference.maximum)} across "
             f"{reference.observation_count} observations.",
             f"Maximum drawdown {reference.max_drawdown:.0%}."
             if reference.max_drawdown is not None
@@ -283,8 +283,8 @@ def _demand_signal(context: AnalysisContext) -> RiskSignal | None:
             severity=Severity.HIGH,
             weight=Decimal("1.0"),
             message=(
-                f"Demand is weak: relative score {demand.score} from a median rank of "
-                f"{demand.median_rank:,}."
+                f"Demand is weak: relative score {display_score(demand.score)} "
+                f"from a median rank of {demand.median_rank:,}."
             ),
             evidence=demand.reasons,
         )
@@ -322,7 +322,7 @@ def _competition_signal(context: AnalysisContext) -> RiskSignal | None:
         severity=severity,
         weight=Decimal("1.0"),
         message=f"Competition pressure is {competition.risk_level.value} "
-        f"(score {competition.pressure_score}).",
+        f"(score {display_score(competition.pressure_score)}).",
         evidence=competition.reasons,
     )
 
@@ -383,7 +383,7 @@ def _quality_signal(context: AnalysisContext) -> RiskSignal | None:
         code="data_quality",
         severity=severity,
         weight=Decimal("1.0"),
-        message=f"Data quality is {quality.score}/100.",
+        message=f"Data quality is {display_score(quality.score)}/100.",
         evidence=[
             f"Missing dimensions: {missing}.",
             *[
@@ -426,9 +426,10 @@ def _margin_signal(context: AnalysisContext) -> RiskSignal | None:
             code="negative_profit",
             severity=Severity.CRITICAL,
             weight=Decimal("1.0"),
-            message=f"Net profit is {result.net_profit} at the observed prices.",
+            message=f"Net profit is {display(result.net_profit)} at the observed prices.",
             evidence=[
-                f"Total cost {result.total_cost} against a sale price of {result.sale_price}."
+                f"Total cost {display(result.total_cost)} against a sale price of "
+                f"{display(result.sale_price)}."
             ],
             is_blocking=True,
         )
@@ -441,8 +442,8 @@ def _margin_signal(context: AnalysisContext) -> RiskSignal | None:
                 f"Margin is {result.margin:.1%}. A fee change or a small price move erases it."
             ),
             evidence=[
-                f"Break-even sale price {result.breakeven_sale_price}, "
-                f"currently {result.sale_price}."
+                f"Break-even sale price {display(result.breakeven_sale_price)}, "
+                f"currently {display(result.sale_price)}."
             ],
         )
     return None
@@ -492,7 +493,8 @@ def assess_risk(context: AnalysisContext) -> RiskAssessmentResult:
 
     headline = ordered[0]
     summary = (
-        f"{level.value.title()} risk ({score}/100). Leading signal: {headline.message}"
+        f"{level.value.title()} risk ({display_score(score)}/100). "
+        f"Leading signal: {headline.message}"
         if not blocking
         else f"Critical risk. {blocking[0].message}"
     )

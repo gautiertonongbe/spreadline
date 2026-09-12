@@ -44,6 +44,10 @@ class ProductSummary(APIModel):
 class OpportunitySummary(APIModel):
     id: str
     product_id: str
+    #: Denormalised for list views. Without it a row cannot be identified as a
+    #: product at all, only as a pair of marketplaces.
+    title: str | None = None
+    brand: str | None = None
     direction: str
     sourcing_channel: str
     source_marketplace: str
