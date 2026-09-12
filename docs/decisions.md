@@ -102,9 +102,26 @@ is unknown it caps the position rather than assuming the source can fill any ord
 ## Recorded decisions worth knowing
 
 **Money is Decimal and computed in one place.** No model, heuristic or provider
-produces a financial figure. AI, if enabled at all, may propose a match or explain
-an anomaly; it may never calculate a fee, a profit or an ROI, and its match
-proposals are capped below the high-confidence band.
+produces a financial figure.
+
+The AI layer (`services/ai`) is where that rule is enforced rather than merely
+stated. It is off by default and the shipped assistant declines every request
+with a reason. What the contract guarantees regardless of which assistant is
+installed:
+
+- `reject_financial_use` raises on any attempt to route a fee, profit or ROI
+  through a model.
+- `cap_match_confidence` clamps an AI-proposed match below the matcher's
+  confirmed threshold. AI can raise an ambiguous match to "worth a human look";
+  it can never assert the band the platform acts on by itself.
+- Every output is an `AIOutput` carrying model, timestamp, confidence, input,
+  output and reason. A claim with no provenance cannot enter the system.
+- A declined request is distinguishable from a negative result, because those
+  are different answers.
+
+No live model integration ships. An unimplemented integration returning
+plausible prose is indistinguishable from a working one, and its output would be
+acted on.
 
 **Fee assumptions are frozen into each snapshot.** A reference to a mutable
 assumptions row would mean today's fee change rewrites last month's prediction,
