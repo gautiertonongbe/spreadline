@@ -99,7 +99,7 @@ backend/
     services/    providers (base, mock, amazon, walmart, reliability, registry),
                  scheduling
     api/         routes
-  tests/         234 tests
+  tests/         246 tests
   migrations/    alembic
   scripts/       seed
 frontend/        Next.js, TypeScript, Tailwind
@@ -136,7 +136,7 @@ credential is a permanent answer.
 make test
 ```
 
-234 tests. The fixture catalogue is built around the decisions that are expensive
+246 tests. The fixture catalogue is built around the decisions that are expensive
 to get wrong: false matches, pack and size mismatches, a price that is low because
 the stock is about to run out, a product with three observations pretending to
 have a trend, and a spread that fees erase entirely.
