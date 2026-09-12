@@ -2,7 +2,19 @@
 
 import { useState } from "react";
 
-import { Card, ErrorState, Stat, Table, Td, Th, Value } from "@/components/ui";
+import {
+  Button,
+  Card,
+  ErrorState,
+  Note,
+  PageHeader,
+  Stat,
+  Table,
+  Td,
+  Th,
+  Tr,
+  Value,
+} from "@/components/ui";
 import { endpoints } from "@/lib/api";
 import { money, percent } from "@/lib/format";
 
@@ -77,13 +89,10 @@ export default function CapitalPage() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-lg font-semibold">Capital</h1>
-        <p className="mt-1 text-sm text-muted">
-          Allocate capital across the analysed opportunities under explicit
-          constraints. Ranking is by risk-adjusted profit per dollar.
-        </p>
-      </div>
+      <PageHeader
+        title="Capital"
+        description="Allocate capital across the analysed opportunities under explicit constraints. Ranking is by risk-adjusted profit per dollar."
+      />
 
       <Card title="Constraints">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -111,11 +120,11 @@ export default function CapitalPage() {
             onChange={(value) => setForm({ ...form, min_score: value })}
           />
           <label className="block">
-            <span className="text-2xs uppercase tracking-wide text-muted">Max risk</span>
+            <span className="label">Max risk</span>
             <select
               value={form.max_risk_level}
               onChange={(event) => setForm({ ...form, max_risk_level: event.target.value })}
-              className="mt-1 w-full rounded border border-border bg-canvas px-2 py-1.5 text-sm outline-none focus:border-accent"
+              className="mt-1.5 w-full rounded border border-border bg-canvas py-[7px] pl-2.5 text-xs text-primary outline-none transition focus:border-accent/50"
             >
               <option value="low">Low</option>
               <option value="medium">Medium</option>
@@ -144,14 +153,11 @@ export default function CapitalPage() {
             <span className="text-xs text-muted">Include review candidates</span>
           </label>
         </div>
-        <button
-          type="button"
-          onClick={() => void simulate()}
-          disabled={busy}
-          className="mt-4 rounded border border-accent/30 bg-accent/10 px-4 py-2 text-sm text-accent transition hover:bg-accent/20 disabled:opacity-50"
-        >
-          {busy ? "Allocating" : "Run simulation"}
-        </button>
+        <div className="mt-5 border-t border-hairline pt-4">
+          <Button tone="accent" onClick={() => void simulate()} disabled={busy}>
+            {busy ? "Allocating" : "Run simulation"}
+          </Button>
+        </div>
       </Card>
 
       {error && <ErrorState message={error} />}
@@ -178,17 +184,15 @@ export default function CapitalPage() {
           </div>
 
           {plan.notes.length > 0 && (
-            <Card>
-              <ul className="space-y-1 text-xs text-muted">
-                {plan.notes.map((note) => (
-                  <li key={note}>{note}</li>
-                ))}
-              </ul>
-            </Card>
+            <Note>
+              {plan.notes.map((note) => (
+                <div key={note}>{note}</div>
+              ))}
+            </Note>
           )}
 
           {plan.allocations.length > 0 && (
-            <Card title="Allocations">
+            <Card title="Allocations" flush>
               <Table>
                 <thead>
                   <tr>
@@ -204,7 +208,7 @@ export default function CapitalPage() {
                 </thead>
                 <tbody>
                   {plan.allocations.map((row) => (
-                    <tr key={row.opportunity_id}>
+                    <Tr key={row.opportunity_id}>
                       <Td>
                         <a
                           href={`/opportunities/${row.opportunity_id}`}
@@ -230,7 +234,7 @@ export default function CapitalPage() {
                       </Td>
                       <Td className="capitalize text-muted">{row.risk_level}</Td>
                       <Td className="text-2xs text-muted">{row.limited_by}</Td>
-                    </tr>
+                    </Tr>
                   ))}
                 </tbody>
               </Table>
@@ -241,6 +245,7 @@ export default function CapitalPage() {
             <Card
               title="Excluded"
               subtitle="Every candidate that did not make the plan, and why"
+              flush
             >
               <Table>
                 <thead>
@@ -251,12 +256,12 @@ export default function CapitalPage() {
                 </thead>
                 <tbody>
                   {plan.excluded.map((row) => (
-                    <tr key={row.opportunity_id}>
+                    <Tr key={row.opportunity_id}>
                       <Td>
                         <span className="block max-w-xs truncate">{row.title}</span>
                       </Td>
                       <Td className="text-muted">{row.reason}</Td>
-                    </tr>
+                    </Tr>
                   ))}
                 </tbody>
               </Table>
@@ -283,7 +288,7 @@ function NumberField({
 }) {
   return (
     <label className="block">
-      <span className="text-2xs uppercase tracking-wide text-muted">{label}</span>
+      <span className="label">{label}</span>
       <input
         type="number"
         step={step}
@@ -291,7 +296,7 @@ function NumberField({
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1 w-full rounded border border-border bg-canvas px-2 py-1.5 text-sm outline-none focus:border-accent"
+        className="mt-1.5 w-full rounded border border-border bg-canvas py-[7px] pl-2.5 text-xs text-primary outline-none transition focus:border-accent/50"
       />
     </label>
   );

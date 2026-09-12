@@ -12,25 +12,63 @@ body {
 }
 
 body {
-  @apply bg-canvas text-primary antialiased;
-  font-feature-settings: "tnum" 1; /* tabular numerals: columns of money line up */
+  @apply bg-canvas font-sans text-[0.8125rem] text-secondary antialiased;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* Numeric cells use tabular figures so a column of prices scans vertically. */
+/* Playfair Display carries the identity. Optical sizing keeps the hairlines
+   from disappearing at smaller display sizes. */
+.display {
+  @apply font-display;
+  font-optical-sizing: auto;
+}
+
+/* Numeric cells: tabular figures so decimal points align down a column, and a
+   slightly tighter tracking so long money values stay compact. */
 .numeric {
-  @apply font-mono tabular-nums;
+  @apply font-mono;
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: -0.01em;
+}
+
+/* A section label: small, spaced, quiet. Used above every value in the app so
+   the eye can skip the labels and read only the figures. */
+.label {
+  @apply text-3xs uppercase tracking-label text-faint;
 }
 
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 11px;
+  height: 11px;
 }
 ::-webkit-scrollbar-track {
   @apply bg-canvas;
 }
 ::-webkit-scrollbar-thumb {
-  @apply bg-border rounded;
+  @apply rounded-full border-[3px] border-canvas bg-border;
 }
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-muted;
+  @apply bg-faint;
+}
+
+/* Inputs inherit the interface face rather than the browser default, and focus
+   is a hairline rather than a glow: this is a data tool, not a form. */
+input,
+select,
+textarea,
+button {
+  font-family: inherit;
+}
+
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2385838f' stroke-width='1.3' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+  padding-right: 1.75rem;
+}
+
+::placeholder {
+  @apply text-faint;
 }

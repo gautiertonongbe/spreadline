@@ -4,14 +4,17 @@ import Link from "next/link";
 import { useState } from "react";
 
 import {
+  Button,
   Card,
   ErrorState,
+  PageHeader,
   RecommendationBadge,
   RiskBadge,
   Stat,
   Table,
   Td,
   Th,
+  Tr,
   Value,
 } from "@/components/ui";
 import { endpoints } from "@/lib/api";
@@ -69,14 +72,10 @@ export default function BulkPage() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-lg font-semibold">Bulk analysis</h1>
-        <p className="mt-1 text-sm text-muted">
-          Paste identifiers or marketplace URLs, one per line, or a CSV with
-          columns such as identifier, asin, walmart_id, upc or url. Rows that fail
-          are reported with their reason rather than dropped.
-        </p>
-      </div>
+      <PageHeader
+        title="Bulk analysis"
+        description="Paste identifiers or marketplace URLs, one per line, or a CSV with columns such as identifier, asin, walmart_id, upc or url. Rows that fail are reported with their reason rather than dropped."
+      />
 
       <Card>
         <textarea
@@ -84,18 +83,13 @@ export default function BulkPage() {
           onChange={(event) => setContent(event.target.value)}
           rows={8}
           spellCheck={false}
-          className="w-full rounded border border-border bg-canvas px-3 py-2 font-mono text-xs outline-none focus:border-accent"
+          className="w-full rounded border border-border bg-canvas px-3 py-2.5 font-mono text-xs leading-relaxed text-primary outline-none transition focus:border-accent/50"
         />
         <div className="mt-3 flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => void run()}
-            disabled={busy}
-            className="rounded border border-accent/30 bg-accent/10 px-4 py-2 text-sm text-accent transition hover:bg-accent/20 disabled:opacity-50"
-          >
+          <Button tone="accent" onClick={() => void run()} disabled={busy}>
             {busy ? "Analysing" : "Analyse all"}
-          </button>
-          <span className="text-2xs text-muted">
+          </Button>
+          <span className="text-2xs text-faint">
             Runs the full pipeline per row, so a large file takes a while.
           </span>
         </div>
@@ -113,7 +107,7 @@ export default function BulkPage() {
           </div>
 
           {result.results.length > 0 && (
-            <Card title="Ranked results">
+            <Card title="Ranked results" flush>
               <Table>
                 <thead>
                   <tr>
@@ -128,7 +122,7 @@ export default function BulkPage() {
                 </thead>
                 <tbody>
                   {result.results.map((row) => (
-                    <tr key={row.line_number}>
+                    <Tr key={row.line_number}>
                       <Td align="right" numeric className="font-semibold">
                         {score(row.score ?? null)}
                       </Td>
@@ -164,7 +158,7 @@ export default function BulkPage() {
                       <Td align="right" numeric>
                         <Value>{percent(row.match_confidence ?? null, 0)}</Value>
                       </Td>
-                    </tr>
+                    </Tr>
                   ))}
                 </tbody>
               </Table>
@@ -172,7 +166,7 @@ export default function BulkPage() {
           )}
 
           {result.failures.length > 0 && (
-            <Card title="Rows that could not be analysed">
+            <Card title="Rows that could not be analysed" flush>
               <Table>
                 <thead>
                   <tr>
@@ -184,14 +178,14 @@ export default function BulkPage() {
                 </thead>
                 <tbody>
                   {result.failures.map((row) => (
-                    <tr key={`${row.line_number}-${row.input}`}>
+                    <Tr key={`${row.line_number}-${row.input}`}>
                       <Td align="right" numeric className="text-muted">
                         {row.line_number}
                       </Td>
                       <Td className="font-mono text-2xs">{row.input}</Td>
                       <Td className="capitalize text-muted">{row.status}</Td>
                       <Td className="text-muted">{row.message}</Td>
-                    </tr>
+                    </Tr>
                   ))}
                 </tbody>
               </Table>

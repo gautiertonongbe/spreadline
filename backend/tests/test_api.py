@@ -472,6 +472,16 @@ class TestProvidersAndAnalytics:
         assert amazon["success_rate"] == 1.0
         assert amazon["circuit_state"] == "closed"
 
+    def test_provider_health_carries_identity_and_capabilities(self, client):
+        """The health payload is consumed on its own, so it has to be complete.
+        Omitting capabilities crashed the providers page at render time."""
+        body = client.get(f"{API}/providers/health").json()
+        assert body
+        for provider in body:
+            assert provider["marketplace"]
+            assert isinstance(provider["capabilities"], list)
+            assert provider["capabilities"]
+
     def test_provider_requests_are_logged(self, client):
         analyze(client)
         body = client.get(f"{API}/providers/requests").json()

@@ -1,14 +1,41 @@
 /**
- * Shared presentation primitives.
+ * Presentation primitives.
  *
- * Colour is meaning here, not decoration: a recommendation, a risk level and a
- * confidence each have one fixed colour so that a red cell always signals the
- * same thing wherever it appears.
+ * Colour is meaning, not decoration. A recommendation, a risk level and a
+ * confidence each own one colour, so a warm cell always signals the same thing
+ * wherever it appears. Gold is the only non-semantic accent and is never used
+ * for a result.
  */
 import type { ReactNode } from "react";
 import { clsx } from "clsx";
 
 import { NOT_AVAILABLE } from "@/lib/format";
+
+export function PageHeader({
+  title,
+  description,
+  actions,
+}: {
+  title: string;
+  description?: ReactNode;
+  actions?: ReactNode;
+}) {
+  return (
+    <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
+      <div className="min-w-0">
+        <h1 className="display text-[1.75rem] font-medium leading-tight tracking-tight text-primary">
+          {title}
+        </h1>
+        {description && (
+          <p className="mt-1.5 max-w-2xl text-[0.8125rem] leading-relaxed text-muted">
+            {description}
+          </p>
+        )}
+      </div>
+      {actions && <div className="flex items-center gap-2">{actions}</div>}
+    </div>
+  );
+}
 
 export function Card({
   title,
@@ -16,30 +43,39 @@ export function Card({
   actions,
   children,
   className,
+  flush = false,
 }: {
   title?: ReactNode;
   subtitle?: ReactNode;
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
+  /** Remove body padding, for a card whose whole body is a table. */
+  flush?: boolean;
 }) {
   return (
     <section
       className={clsx(
-        "rounded-lg border border-border bg-surface",
+        "overflow-hidden rounded-lg border border-border bg-surface shadow-card",
         className,
       )}
     >
       {(title || actions) && (
-        <header className="flex items-start justify-between gap-4 border-b border-border px-5 py-3.5">
-          <div>
-            {title && <h2 className="text-sm font-semibold text-primary">{title}</h2>}
-            {subtitle && <p className="mt-0.5 text-xs text-muted">{subtitle}</p>}
+        <header className="flex items-start justify-between gap-4 border-b border-hairline bg-hairline-top px-5 py-4">
+          <div className="min-w-0">
+            {title && (
+              <h2 className="display text-[0.9375rem] font-medium leading-snug tracking-tight text-primary">
+                {title}
+              </h2>
+            )}
+            {subtitle && (
+              <p className="mt-1 text-xs leading-relaxed text-muted">{subtitle}</p>
+            )}
           </div>
-          {actions}
+          {actions && <div className="shrink-0">{actions}</div>}
         </header>
       )}
-      <div className="px-5 py-4">{children}</div>
+      <div className={flush ? "" : "px-5 py-4"}>{children}</div>
     </section>
   );
 }
@@ -49,11 +85,13 @@ export function Stat({
   value,
   hint,
   tone = "default",
+  size = "default",
 }: {
   label: string;
   value: ReactNode;
   hint?: ReactNode;
-  tone?: "default" | "buy" | "review" | "pass" | "muted";
+  tone?: "default" | "buy" | "review" | "pass" | "muted" | "accent";
+  size?: "default" | "large";
 }) {
   const toneClass = {
     default: "text-primary",
@@ -61,28 +99,37 @@ export function Stat({
     review: "text-review",
     pass: "text-pass",
     muted: "text-muted",
+    accent: "text-accent",
   }[tone];
   return (
-    <div className="rounded-lg border border-border bg-surface px-4 py-3">
-      <div className="text-2xs uppercase tracking-wide text-muted">{label}</div>
-      <div className={clsx("numeric mt-1.5 text-xl font-semibold", toneClass)}>{value}</div>
-      {hint && <div className="mt-1 text-xs text-muted">{hint}</div>}
+    <div className="rounded-lg border border-border bg-surface px-4 py-3.5 shadow-card">
+      <div className="label">{label}</div>
+      <div
+        className={clsx(
+          "display mt-2 font-medium leading-none tracking-tight",
+          size === "large" ? "text-3xl" : "text-[1.5rem]",
+          toneClass,
+        )}
+      >
+        {value}
+      </div>
+      {hint && <div className="mt-2 text-xs leading-snug text-muted">{hint}</div>}
     </div>
   );
 }
 
 const RECOMMENDATION_STYLES: Record<string, string> = {
-  buy: "bg-buy/15 text-buy border-buy/30",
-  review: "bg-review/15 text-review border-review/30",
-  pass: "bg-pass/15 text-pass border-pass/30",
+  buy: "bg-buy/12 text-buy ring-buy/25",
+  review: "bg-review/12 text-review ring-review/25",
+  pass: "bg-pass/12 text-pass ring-pass/25",
 };
 
 export function RecommendationBadge({ value }: { value: string }) {
   return (
     <span
       className={clsx(
-        "inline-flex items-center rounded border px-2 py-0.5 text-2xs font-semibold uppercase tracking-wide",
-        RECOMMENDATION_STYLES[value] ?? "border-border bg-raised text-muted",
+        "inline-flex items-center rounded px-2 py-[3px] text-3xs font-semibold uppercase tracking-label ring-1 ring-inset",
+        RECOMMENDATION_STYLES[value] ?? "bg-raised text-muted ring-border",
       )}
     >
       {value}
@@ -91,30 +138,38 @@ export function RecommendationBadge({ value }: { value: string }) {
 }
 
 const RISK_STYLES: Record<string, string> = {
-  low: "bg-risk-low/15 text-risk-low border-risk-low/30",
-  medium: "bg-risk-medium/15 text-risk-medium border-risk-medium/30",
-  high: "bg-risk-high/15 text-risk-high border-risk-high/30",
-  critical: "bg-risk-critical/15 text-risk-critical border-risk-critical/30",
+  low: "text-risk-low",
+  medium: "text-risk-medium",
+  high: "text-risk-high",
+  critical: "text-risk-critical",
 };
 
+const RISK_DOT: Record<string, string> = {
+  low: "bg-risk-low",
+  medium: "bg-risk-medium",
+  high: "bg-risk-high",
+  critical: "bg-risk-critical",
+};
+
+/** Risk reads as a dot plus a word: legible at a glance down a column. */
 export function RiskBadge({ value }: { value: string }) {
   return (
     <span
       className={clsx(
-        "inline-flex items-center rounded border px-2 py-0.5 text-2xs font-medium capitalize",
-        RISK_STYLES[value] ?? "border-border bg-raised text-muted",
+        "inline-flex items-center gap-1.5 whitespace-nowrap text-xs capitalize",
+        RISK_STYLES[value] ?? "text-muted",
       )}
     >
+      <span className={clsx("h-1.5 w-1.5 rounded-full", RISK_DOT[value] ?? "bg-faint")} />
       {value}
     </span>
   );
 }
 
 /**
- * Confidence is rendered everywhere the platform is uncertain. It is a first
- * class part of the interface, not a footnote, because a high score built on
- * low-confidence data is a different proposition from the same score built on
- * measured data.
+ * Confidence appears everywhere the platform is uncertain. It is a first class
+ * part of the interface, not a footnote: a high score built on low-confidence
+ * data is a different proposition from the same score built on measurement.
  */
 export function ConfidenceBadge({ value, label }: { value: string; label?: string }) {
   const styles: Record<string, string> = {
@@ -124,8 +179,13 @@ export function ConfidenceBadge({ value, label }: { value: string; label?: strin
     none: "text-pass",
   };
   return (
-    <span className={clsx("text-2xs font-medium uppercase tracking-wide", styles[value] ?? "text-muted")}>
-      {label ? `${label}: ` : ""}
+    <span
+      className={clsx(
+        "text-3xs font-medium uppercase tracking-label",
+        styles[value] ?? "text-muted",
+      )}
+    >
+      {label ? `${label} ` : ""}
       {value === "none" ? "no data" : value}
     </span>
   );
@@ -139,16 +199,16 @@ export function Badge({
   tone?: "neutral" | "accent" | "warning" | "danger" | "success";
 }) {
   const tones = {
-    neutral: "border-border bg-raised text-muted",
-    accent: "border-accent/30 bg-accent/10 text-accent",
-    warning: "border-review/30 bg-review/10 text-review",
-    danger: "border-pass/30 bg-pass/10 text-pass",
-    success: "border-buy/30 bg-buy/10 text-buy",
+    neutral: "bg-raised text-muted ring-border",
+    accent: "bg-accent/10 text-accent ring-accent/25",
+    warning: "bg-review/10 text-review ring-review/25",
+    danger: "bg-pass/10 text-pass ring-pass/25",
+    success: "bg-buy/10 text-buy ring-buy/25",
   };
   return (
     <span
       className={clsx(
-        "inline-flex items-center rounded border px-2 py-0.5 text-2xs font-medium",
+        "inline-flex items-center rounded px-2 py-[3px] text-2xs font-medium ring-1 ring-inset",
         tones[tone],
       )}
     >
@@ -157,7 +217,6 @@ export function Badge({
   );
 }
 
-/** A 0-100 bar. Used for scores and component breakdowns. */
 export function ScoreBar({ value, tone = "accent" }: { value: number; tone?: string }) {
   const width = Math.max(0, Math.min(100, value));
   const tones: Record<string, string> = {
@@ -167,9 +226,9 @@ export function ScoreBar({ value, tone = "accent" }: { value: number; tone?: str
     pass: "bg-pass",
   };
   return (
-    <div className="h-1.5 w-full overflow-hidden rounded-full bg-raised">
+    <div className="h-[3px] w-full overflow-hidden rounded-full bg-overlay">
       <div
-        className={clsx("h-full rounded-full", tones[tone] ?? "bg-accent")}
+        className={clsx("h-full rounded-full transition-all", tones[tone] ?? "bg-accent")}
         style={{ width: `${width}%` }}
       />
     </div>
@@ -186,25 +245,48 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border px-6 py-14 text-center">
-      <h3 className="text-sm font-semibold text-primary">{title}</h3>
-      <p className="mt-1.5 max-w-md text-sm text-muted">{description}</p>
-      {action && <div className="mt-4">{action}</div>}
+    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border px-6 py-16 text-center">
+      <h3 className="display text-base font-medium text-primary">{title}</h3>
+      <p className="mt-2 max-w-md text-[0.8125rem] leading-relaxed text-muted">
+        {description}
+      </p>
+      {action && <div className="mt-5">{action}</div>}
     </div>
   );
 }
 
 export function ErrorState({ message }: { message: string }) {
   return (
-    <div className="rounded-lg border border-pass/30 bg-pass/10 px-4 py-3 text-sm text-pass">
+    <div className="rounded-lg border border-pass/25 bg-pass/10 px-4 py-3 text-[0.8125rem] leading-relaxed text-pass">
       {message}
     </div>
   );
 }
 
+export function Note({
+  children,
+  tone = "neutral",
+}: {
+  children: ReactNode;
+  tone?: "neutral" | "warning";
+}) {
+  return (
+    <div
+      className={clsx(
+        "rounded border px-3 py-2 text-xs leading-relaxed",
+        tone === "warning"
+          ? "border-review/25 bg-review/10 text-review"
+          : "border-border bg-raised text-muted",
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
 /**
- * Renders a value that may legitimately be absent. Centralised so that a null
- * can never be accidentally rendered as an empty cell that reads as zero.
+ * Renders a value that may legitimately be absent. Centralised so a null can
+ * never be rendered as an empty cell that reads as zero.
  */
 export function Value({
   children,
@@ -213,11 +295,14 @@ export function Value({
   children: ReactNode;
   className?: string;
 }) {
-  const isMissing = children === NOT_AVAILABLE || children === null || children === undefined;
+  const isMissing =
+    children === NOT_AVAILABLE || children === null || children === undefined;
   return (
     <span
       className={clsx(
-        isMissing ? "font-sans text-xs font-normal normal-case text-muted" : className,
+        isMissing
+          ? "font-sans text-2xs font-normal tracking-normal text-faint"
+          : className,
       )}
     >
       {isMissing ? NOT_AVAILABLE : children}
@@ -225,10 +310,52 @@ export function Value({
   );
 }
 
+export function Button({
+  children,
+  onClick,
+  type = "button",
+  tone = "neutral",
+  disabled = false,
+  size = "default",
+  className,
+}: {
+  children: ReactNode;
+  onClick?: () => void;
+  type?: "button" | "submit";
+  tone?: "neutral" | "accent" | "buy" | "pass";
+  disabled?: boolean;
+  size?: "default" | "small";
+  className?: string;
+}) {
+  const tones = {
+    neutral: "border-border bg-raised text-secondary hover:border-faint hover:text-primary",
+    accent: "border-accent/30 bg-accent/10 text-accent hover:bg-accent/20",
+    buy: "border-buy/30 bg-buy/10 text-buy hover:bg-buy/20",
+    pass: "border-pass/30 bg-pass/10 text-pass hover:bg-pass/20",
+  };
+  return (
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={disabled}
+      className={clsx(
+        "inline-flex items-center justify-center rounded border font-medium transition disabled:cursor-not-allowed disabled:opacity-45",
+        size === "small" ? "px-2.5 py-1 text-2xs" : "px-3.5 py-[7px] text-xs",
+        tones[tone],
+        className,
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function Table({ children }: { children: ReactNode }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[720px] border-collapse text-sm">{children}</table>
+      <table className="w-full min-w-[880px] border-collapse text-[0.8125rem]">
+        {children}
+      </table>
     </div>
   );
 }
@@ -236,17 +363,20 @@ export function Table({ children }: { children: ReactNode }) {
 export function Th({
   children,
   align = "left",
+  className,
 }: {
   children?: ReactNode;
   align?: "left" | "right" | "center";
+  className?: string;
 }) {
   return (
     <th
       className={clsx(
-        "border-b border-border px-3 py-2.5 text-2xs font-semibold uppercase tracking-wide text-muted",
+        "border-b border-border bg-surface px-3 py-2.5 text-3xs font-semibold uppercase tracking-label text-faint",
         align === "right" && "text-right",
         align === "center" && "text-center",
         align === "left" && "text-left",
+        className,
       )}
     >
       {children}
@@ -268,7 +398,7 @@ export function Td({
   return (
     <td
       className={clsx(
-        "border-b border-border/60 px-3 py-2.5",
+        "border-b border-hairline px-3 py-2.5 align-middle",
         numeric && "numeric",
         align === "right" && "text-right",
         align === "center" && "text-center",
@@ -277,5 +407,17 @@ export function Td({
     >
       {children}
     </td>
+  );
+}
+
+export function Tr({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <tr className={clsx("transition-colors hover:bg-raised/40", className)}>{children}</tr>
   );
 }

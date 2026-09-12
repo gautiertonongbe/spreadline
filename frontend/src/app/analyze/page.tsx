@@ -5,9 +5,11 @@ import { useState } from "react";
 
 import {
   Badge,
+  Button,
   Card,
   ConfidenceBadge,
   ErrorState,
+  PageHeader,
   RecommendationBadge,
   RiskBadge,
   ScoreBar,
@@ -15,6 +17,7 @@ import {
   Table,
   Td,
   Th,
+  Tr,
   Value,
 } from "@/components/ui";
 import { endpoints, type AnalysisResponse, type SearchItem } from "@/lib/api";
@@ -70,20 +73,17 @@ export default function AnalyzePage() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-lg font-semibold">Analyze</h1>
-        <p className="mt-1 text-sm text-muted">
-          Search a marketplace, then analyse a listing against the other market.
-          Keywords, ASINs, Walmart item ids, UPCs and product URLs all work.
-        </p>
-      </div>
+      <PageHeader
+        title="Analyze"
+        description="Search a marketplace, then analyse a listing against the other market. Keywords, ASINs, Walmart item ids, UPCs and product URLs all work."
+      />
 
       <Card>
         <div className="flex flex-wrap gap-2">
           <select
             value={marketplace}
             onChange={(event) => setMarketplace(event.target.value)}
-            className="rounded border border-border bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
+            className="rounded border border-border bg-canvas py-[9px] pl-3 text-xs text-secondary outline-none transition focus:border-accent/50"
           >
             <option value="walmart">Buy from Walmart</option>
             <option value="amazon">Buy from Amazon</option>
@@ -95,23 +95,18 @@ export default function AnalyzePage() {
               if (event.key === "Enter") void search();
             }}
             placeholder="Sony headphones, B09XS7JWHH, 027242923058, or a product URL"
-            className="min-w-[280px] flex-1 rounded border border-border bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
+            className="min-w-[280px] flex-1 rounded border border-border bg-canvas px-3 py-[9px] text-xs text-primary outline-none transition focus:border-accent/50"
           />
-          <button
-            type="button"
-            onClick={() => void search()}
-            disabled={busy}
-            className="rounded border border-accent/30 bg-accent/10 px-4 py-2 text-sm text-accent transition hover:bg-accent/20 disabled:opacity-50"
-          >
+          <Button tone="accent" onClick={() => void search()} disabled={busy}>
             {busy ? "Working" : "Search"}
-          </button>
+          </Button>
         </div>
       </Card>
 
       {error && <ErrorState message={error} />}
 
       {results && results.length > 0 && !analysis && (
-        <Card title="Results" subtitle="Pick a listing to analyse">
+        <Card title="Results" subtitle="Pick a listing to analyse" flush>
           <Table>
             <thead>
               <tr>
@@ -125,10 +120,10 @@ export default function AnalyzePage() {
             </thead>
             <tbody>
               {results.map((item) => (
-                <tr key={`${item.marketplace}-${item.external_id}`}>
+                <Tr key={`${item.marketplace}-${item.external_id}`}>
                   <Td>
                     <div className="max-w-md truncate">{item.title}</div>
-                    <div className="font-mono text-2xs text-muted">{item.external_id}</div>
+                    <div className="mt-0.5 font-mono text-2xs text-faint">{item.external_id}</div>
                   </Td>
                   <Td className="text-muted">{item.brand ?? "not available"}</Td>
                   <Td align="right" numeric>
@@ -141,16 +136,11 @@ export default function AnalyzePage() {
                     {item.seller_count ?? "not available"}
                   </Td>
                   <Td align="right">
-                    <button
-                      type="button"
-                      onClick={() => void analyze(item)}
-                      disabled={busy}
-                      className="rounded border border-border bg-raised px-3 py-1 text-xs transition hover:border-muted disabled:opacity-50"
-                    >
+                    <Button size="small" onClick={() => void analyze(item)} disabled={busy}>
                       Analyse
-                    </button>
+                    </Button>
                   </Td>
-                </tr>
+                </Tr>
               ))}
             </tbody>
           </Table>
@@ -189,17 +179,11 @@ function AnalysisView({
           {!summary.is_live_data && <Badge tone="warning">Fixture data</Badge>}
         </div>
         <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={onBack}
-            className="rounded border border-border bg-raised px-3 py-1.5 text-xs transition hover:border-muted"
-          >
-            Back to results
-          </button>
+          <Button onClick={onBack}>Back to results</Button>
           {analysis.opportunity_id && (
             <Link
               href={`/opportunities/${analysis.opportunity_id}`}
-              className="rounded border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs text-accent transition hover:bg-accent/20"
+              className="inline-flex items-center rounded border border-accent/30 bg-accent/10 px-3.5 py-[7px] text-xs font-medium text-accent transition hover:bg-accent/20"
             >
               Open full record
             </Link>
@@ -236,7 +220,7 @@ function AnalysisView({
 
         <div className="mt-5 grid gap-5 lg:grid-cols-2">
           <div>
-            <div className="text-2xs uppercase tracking-wide text-muted">Why</div>
+            <div className="label">Why</div>
             <ul className="mt-1.5 space-y-1 text-sm">
               {decision.reasons.length === 0 && (
                 <li className="text-muted">No positive findings.</li>
@@ -250,7 +234,7 @@ function AnalysisView({
             </ul>
           </div>
           <div>
-            <div className="text-2xs uppercase tracking-wide text-muted">Risks</div>
+            <div className="label">Risks</div>
             <ul className="mt-1.5 space-y-1 text-sm">
               {risk.signals.length === 0 && <li className="text-muted">None raised.</li>}
               {risk.signals.map((signal) => (
@@ -325,7 +309,7 @@ function AnalysisView({
         </Card>
       </div>
 
-      <Card title="Score breakdown">
+      <Card title="Score breakdown" subtitle="No component is hidden">
         <div className="grid gap-3 lg:grid-cols-2">
           {scoring.components.map((component) => (
             <div key={component.name}>
@@ -368,7 +352,7 @@ function AnalysisView({
             </thead>
             <tbody>
               {stress_test.scenarios.map((scenario) => (
-                <tr key={scenario.key}>
+                <Tr key={scenario.key}>
                   <Td>{scenario.label}</Td>
                   <Td className="text-2xs text-muted">{scenario.description}</Td>
                   <Td align="right" numeric>
@@ -387,7 +371,7 @@ function AnalysisView({
                   <Td align="right" numeric>
                     <Value>{percent(scenario.roi)}</Value>
                   </Td>
-                </tr>
+                </Tr>
               ))}
             </tbody>
           </Table>

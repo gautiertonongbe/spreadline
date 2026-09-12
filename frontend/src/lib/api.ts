@@ -398,7 +398,14 @@ export interface ProviderInfo {
   configuration_note: string | null;
 }
 
-export interface ProviderHealth extends ProviderInfo {
+export interface ProviderHealth {
+  slug: string;
+  marketplace: string;
+  display_name: string;
+  capabilities: string[];
+  is_configured: boolean;
+  is_live: boolean;
+  configuration_note: string | null;
   state: string;
   circuit_state: string;
   request_count: number;

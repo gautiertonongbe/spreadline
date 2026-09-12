@@ -1,6 +1,15 @@
 import Link from "next/link";
 
-import { Card, ConfidenceBadge, EmptyState, ErrorState, Stat, Value } from "@/components/ui";
+import {
+  Card,
+  ConfidenceBadge,
+  EmptyState,
+  ErrorState,
+  Note,
+  PageHeader,
+  Stat,
+  Value,
+} from "@/components/ui";
 import { endpoints, type DashboardResponse } from "@/lib/api";
 import { money, percent, score } from "@/lib/format";
 
@@ -24,13 +33,10 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-lg font-semibold">Dashboard</h1>
-        <p className="mt-1 text-sm text-muted">
-          Where inventory capital should go, and how well the platform has predicted
-          that so far.
-        </p>
-      </div>
+      <PageHeader
+        title="Dashboard"
+        description="Where inventory capital should go, and how well the platform has predicted that so far."
+      />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat
@@ -104,9 +110,7 @@ export default async function DashboardPage() {
                 />
               </div>
               {prediction_accuracy.caveat && (
-                <p className="rounded border border-review/30 bg-review/10 px-3 py-2 text-xs text-review">
-                  {prediction_accuracy.caveat}
-                </p>
+                <Note tone="warning">{prediction_accuracy.caveat}</Note>
               )}
             </div>
           )}
@@ -119,7 +123,7 @@ export default async function DashboardPage() {
         actions={
           <Link
             href="/opportunities"
-            className="text-xs text-accent transition hover:underline"
+            className="text-2xs uppercase tracking-label text-faint transition hover:text-accent"
           >
             Validate an opportunity
           </Link>
@@ -127,9 +131,9 @@ export default async function DashboardPage() {
       >
         <div className="space-y-3">
           <div className="flex items-baseline justify-between">
-            <div className="numeric text-2xl font-semibold">
+            <div className="display text-3xl font-medium text-primary">
               {validation.validated_count}
-              <span className="text-base font-normal text-muted">
+              <span className="text-lg font-normal text-faint">
                 {" "}
                 / {validation.target_count}
               </span>
@@ -139,7 +143,7 @@ export default async function DashboardPage() {
               label="statistical weight"
             />
           </div>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-raised">
+          <div className="h-[3px] w-full overflow-hidden rounded-full bg-overlay">
             <div
               className="h-full rounded-full bg-accent"
               style={{ width: `${Number(validation.progress_pct) * 100}%` }}
@@ -147,44 +151,40 @@ export default async function DashboardPage() {
           </div>
           <div className="grid grid-cols-3 gap-3 pt-1">
             <div>
-              <div className="text-2xs uppercase tracking-wide text-muted">
+              <div className="label">
                 Match accuracy
               </div>
-              <div className="numeric mt-0.5 text-sm">
+              <div className="numeric mt-1 text-sm text-secondary">
                 <Value>{percent(validation.match_accuracy.rate)}</Value>
-                <span className="ml-1 text-2xs text-muted">
+                <span className="ml-1.5 text-2xs text-faint">
                   ({validation.match_accuracy.checked} checked)
                 </span>
               </div>
             </div>
             <div>
-              <div className="text-2xs uppercase tracking-wide text-muted">
+              <div className="label">
                 Buy precision
               </div>
-              <div className="numeric mt-0.5 text-sm">
+              <div className="numeric mt-1 text-sm text-secondary">
                 <Value>{percent(validation.buy_precision.rate)}</Value>
-                <span className="ml-1 text-2xs text-muted">
+                <span className="ml-1.5 text-2xs text-faint">
                   ({validation.buy_precision.checked} checked)
                 </span>
               </div>
             </div>
             <div>
-              <div className="text-2xs uppercase tracking-wide text-muted">
+              <div className="label">
                 False positives
               </div>
-              <div className="numeric mt-0.5 text-sm">
+              <div className="numeric mt-1 text-sm text-secondary">
                 <Value>{percent(validation.false_positive_rate.rate)}</Value>
-                <span className="ml-1 text-2xs text-muted">
+                <span className="ml-1.5 text-2xs text-faint">
                   ({validation.false_positive_rate.checked} checked)
                 </span>
               </div>
             </div>
           </div>
-          {validation.caveat && (
-            <p className="rounded border border-border bg-raised px-3 py-2 text-xs text-muted">
-              {validation.caveat}
-            </p>
-          )}
+          {validation.caveat && <Note>{validation.caveat}</Note>}
         </div>
       </Card>
     </div>

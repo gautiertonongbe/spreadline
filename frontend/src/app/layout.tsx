@@ -1,7 +1,39 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { IBM_Plex_Mono, Inter, Playfair_Display } from "next/font/google";
+
+import { DataSourceBanner } from "@/components/data-source-banner";
+import { Nav } from "@/components/nav";
 
 import "./globals.css";
+
+/**
+ * Typography.
+ *
+ * Playfair Display carries the identity: page titles, section headings and the
+ * display figures. It is a high-contrast transitional serif, which is exactly
+ * why it is not used for the dense numeric columns - at 11px a hairline serif
+ * makes an 8 and a 3 hard to separate, and those columns are money. Those cells
+ * use IBM Plex Mono with tabular figures so decimal points align down the page.
+ */
+const playfair = Playfair_Display({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-display",
+  weight: ["400", "500", "600", "700"],
+});
+
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-sans",
+});
+
+const plexMono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-mono",
+  weight: ["400", "500", "600"],
+});
 
 export const metadata: Metadata = {
   title: "Spreadline",
@@ -9,58 +41,42 @@ export const metadata: Metadata = {
     "Cross-market inventory intelligence: where is the best use of inventory capital right now.",
 };
 
-const NAVIGATION = [
-  { href: "/", label: "Dashboard" },
-  { href: "/analyze", label: "Analyze" },
-  { href: "/opportunities", label: "Opportunities" },
-  { href: "/bulk", label: "Bulk" },
-  { href: "/capital", label: "Capital" },
-  { href: "/providers", label: "Providers" },
-];
-
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html
+      lang="en"
+      className={`${playfair.variable} ${inter.variable} ${plexMono.variable}`}
+    >
       <body className="min-h-screen">
         <div className="flex min-h-screen">
-          <aside className="hidden w-56 shrink-0 border-r border-border bg-surface lg:block">
-            <div className="px-5 py-5">
-              <Link href="/" className="block">
-                <div className="text-sm font-semibold tracking-tight text-primary">
+          <aside className="hidden w-60 shrink-0 border-r border-border bg-surface lg:flex lg:flex-col">
+            <div className="border-b border-hairline px-6 py-6">
+              <a href="/" className="block">
+                <div className="font-display text-[1.375rem] font-medium leading-none tracking-tight text-primary">
                   Spreadline
                 </div>
-                <div className="mt-0.5 text-2xs text-muted">
-                  Inventory intelligence
+                <div className="mt-2 text-3xs uppercase tracking-label text-faint">
+                  Inventory Intelligence
                 </div>
-              </Link>
+              </a>
             </div>
-            <nav className="px-3 pb-6">
-              {NAVIGATION.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="block rounded px-3 py-2 text-sm text-muted transition hover:bg-raised hover:text-primary"
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </nav>
+            <Nav />
+            <div className="mt-auto border-t border-hairline px-6 py-5">
+              <DataSourceBanner variant="sidebar" />
+            </div>
           </aside>
 
           <div className="flex min-w-0 flex-1 flex-col">
-            <header className="flex items-center justify-between border-b border-border bg-surface px-6 py-3 lg:hidden">
-              <Link href="/" className="text-sm font-semibold">
+            <header className="flex items-center justify-between gap-4 border-b border-border bg-surface px-6 py-3 lg:hidden">
+              <a href="/" className="font-display text-lg font-medium tracking-tight">
                 Spreadline
-              </Link>
-              <nav className="flex gap-3 overflow-x-auto text-xs text-muted">
-                {NAVIGATION.map((item) => (
-                  <Link key={item.href} href={item.href} className="whitespace-nowrap">
-                    {item.label}
-                  </Link>
-                ))}
-              </nav>
+              </a>
+              <DataSourceBanner variant="compact" />
             </header>
-            <main className="min-w-0 flex-1 px-6 py-6">{children}</main>
+            <div className="border-b border-hairline lg:hidden">
+              <Nav orientation="horizontal" />
+            </div>
+            <main className="min-w-0 flex-1 px-6 py-7 lg:px-9 lg:py-9">{children}</main>
           </div>
         </div>
       </body>

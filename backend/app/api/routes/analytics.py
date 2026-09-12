@@ -60,6 +60,11 @@ def provider_health(providers: Providers, session: DbSession) -> list[dict[str, 
             {
                 "slug": provider.slug,
                 "display_name": provider.display_name,
+                # Identity and capabilities travel with the health payload so a
+                # client has one call for "what can this provider do and how is
+                # it behaving", rather than having to join two endpoints.
+                "marketplace": provider.marketplace.value,
+                "capabilities": sorted(item.value for item in provider.capabilities),
                 "state": metrics.health_state(provider.circuit).value
                 if provider.is_configured
                 else "not_configured",
