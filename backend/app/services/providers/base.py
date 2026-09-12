@@ -173,6 +173,7 @@ class ProviderInfo(ProviderDTO):
     capabilities: tuple[ProviderCapability, ...]
     is_configured: bool
     is_live: bool
+    kind: str = "live"
     #: Why a provider is unusable, in words fit to show an operator.
     configuration_note: str | None = None
 
@@ -187,6 +188,11 @@ class MarketplaceProvider(abc.ABC):
     #: False for fixtures. Surfaced in the UI so a mock result is never mistaken
     #: for a market observation.
     is_live: bool = False
+    #: What this provider actually is. "live" calls a market, "fixture" serves
+    #: canned data, "planned" is registered but unimplemented. Three states
+    #: rather than one boolean, because an unimplemented platform and a fixture
+    #: are different things and labelling the first as the second is misleading.
+    kind: str = "live"
 
     @property
     def is_configured(self) -> bool:
@@ -208,6 +214,7 @@ class MarketplaceProvider(abc.ABC):
             capabilities=tuple(sorted(self.capabilities)),
             is_configured=self.is_configured,
             is_live=self.is_live,
+            kind=self.kind,
             configuration_note=self.configuration_note,
         )
 

@@ -51,6 +51,11 @@ class FeeAssumptions(BaseModel):
     #: Per-item fee on media categories (books, music, video, software).
     closing_fee: Decimal = Decimal("0")
     closing_fee_categories: tuple[str, ...] = ()
+    #: Flat per-order fee charged on every sale regardless of category. eBay
+    #: charges one; Amazon and Walmart do not. Modelled separately from the
+    #: closing fee because it is unconditional, and folding it into the referral
+    #: rate would make break-even wrong at every price except one.
+    fixed_transaction_fee: Decimal = Decimal("0")
 
     # -- fulfilment --------------------------------------------------------
     fulfillment_tiers: tuple[WeightTier, ...] = ()
@@ -188,6 +193,52 @@ WALMART_DEFAULT_ASSUMPTIONS = FeeAssumptions(
     storage_fee_per_cubic_foot_month=Decimal("0.75"),
 )
 
+#: eBay. The seller ships, so there is no fulfilment tier table and no storage:
+#: the unit sits in the operator's own space, which the misc cost can carry.
+EBAY_DEFAULT_ASSUMPTIONS = FeeAssumptions(
+    version="ebay-v1",
+    marketplace=Marketplace.EBAY,
+    default_referral_rate=Decimal("0.1325"),
+    referral_rate_by_category={
+        "electronics": Decimal("0.1325"),
+        "computers": Decimal("0.1325"),
+        "cell phones & accessories": Decimal("0.1325"),
+        "clothing": Decimal("0.15"),
+        "jewelry": Decimal("0.15"),
+        "books": Decimal("0.1495"),
+        "musical instruments": Decimal("0.0635"),
+        "video games": Decimal("0.1325"),
+        "home & kitchen": Decimal("0.1325"),
+        "toys & games": Decimal("0.1325"),
+    },
+    min_referral_fee=Decimal("0"),
+    fixed_transaction_fee=Decimal("0.40"),
+    fulfillment_tiers=(),
+    merchant_shipping_per_unit=Decimal("6.50"),
+    storage_fee_per_cubic_foot_month=Decimal("0"),
+    expected_months_in_storage=Decimal("0"),
+    inbound_shipping_per_unit=Decimal("0"),
+    prep_cost_per_unit=Decimal("0.50"),
+    return_rate=Decimal("0.04"),
+    return_loss_rate=Decimal("0.50"),
+)
+
+#: Best Buy is a retail source, not a place the operator sells. The schedule
+#: exists so the marketplace resolves, and carries no selling fees.
+BESTBUY_DEFAULT_ASSUMPTIONS = FeeAssumptions(
+    version="bestbuy-v1",
+    marketplace=Marketplace.BESTBUY,
+    default_referral_rate=Decimal("0"),
+    min_referral_fee=Decimal("0"),
+    fulfillment_tiers=(),
+    merchant_shipping_per_unit=Decimal("0"),
+    storage_fee_per_cubic_foot_month=Decimal("0"),
+    expected_months_in_storage=Decimal("0"),
+    inbound_shipping_per_unit=Decimal("0"),
+    prep_cost_per_unit=Decimal("0"),
+    return_rate=Decimal("0"),
+)
+
 MOCK_DEFAULT_ASSUMPTIONS = AMAZON_DEFAULT_ASSUMPTIONS.model_copy(
     update={"version": "mock-v1", "marketplace": Marketplace.MOCK}
 )
@@ -195,6 +246,8 @@ MOCK_DEFAULT_ASSUMPTIONS = AMAZON_DEFAULT_ASSUMPTIONS.model_copy(
 _DEFAULTS: dict[Marketplace, FeeAssumptions] = {
     Marketplace.AMAZON: AMAZON_DEFAULT_ASSUMPTIONS,
     Marketplace.WALMART: WALMART_DEFAULT_ASSUMPTIONS,
+    Marketplace.EBAY: EBAY_DEFAULT_ASSUMPTIONS,
+    Marketplace.BESTBUY: BESTBUY_DEFAULT_ASSUMPTIONS,
     Marketplace.MOCK: MOCK_DEFAULT_ASSUMPTIONS,
 }
 
@@ -220,5 +273,8 @@ def fulfillment_default_for(marketplace: Marketplace | str) -> FulfillmentMethod
     return {
         Marketplace.AMAZON: FulfillmentMethod.FBA,
         Marketplace.WALMART: FulfillmentMethod.WFS,
+        # eBay and a retail source are both merchant-shipped.
+        Marketplace.EBAY: FulfillmentMethod.SELLER,
+        Marketplace.BESTBUY: FulfillmentMethod.SELLER,
         Marketplace.MOCK: FulfillmentMethod.FBA,
     }[Marketplace(marketplace)]

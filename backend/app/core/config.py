@@ -64,6 +64,19 @@ class Settings(BaseSettings):
     amazon_provider_credentials: str | None = None
     walmart_provider_credentials: str | None = None
 
+    # Best Buy Products API. A free developer key from developer.bestbuy.com is
+    # enough for development and testing; commercial use needs a partner
+    # agreement with Best Buy, which is the operator's to arrange.
+    bestbuy_api_key: str | None = None
+    bestbuy_base_url: str = "https://api.bestbuy.com/v1"
+
+    # eBay Browse API. A free developer account grants an application token via
+    # the client-credentials flow; no seller account and no per-request cost.
+    ebay_client_id: str | None = None
+    ebay_client_secret: str | None = None
+    ebay_marketplace_id: str = "EBAY_US"
+    ebay_environment: Literal["production", "sandbox"] = "production"
+
     # --- Freshness (TTL, seconds) -----------------------------------------
     ttl_current_price_seconds: int = 900  # 15 min
     ttl_availability_seconds: int = 900

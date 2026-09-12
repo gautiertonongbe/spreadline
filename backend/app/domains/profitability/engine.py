@@ -90,6 +90,7 @@ class ProfitabilityResult:
     acquisition_shipping: Decimal
     referral_fee: Decimal
     closing_fee: Decimal
+    fixed_fee: Decimal
     fulfillment_fee: Decimal
     storage_fee: Decimal
     inbound_shipping: Decimal
@@ -129,6 +130,7 @@ class ProfitabilityResult:
             "acquisition_shipping": str(self.acquisition_shipping),
             "referral_fee": str(self.referral_fee),
             "closing_fee": str(self.closing_fee),
+            "fixed_fee": str(self.fixed_fee),
             "fulfillment_fee": str(self.fulfillment_fee),
             "storage_fee": str(self.storage_fee),
             "inbound_shipping": str(self.inbound_shipping),
@@ -185,6 +187,7 @@ def calculate_profitability(
         fees.min_referral_fee if sale_price > 0 else ZERO,
     )
     closing_fee = fees.closing_fee if fees.has_closing_fee(data.category) else ZERO
+    fixed_fee = money(fees.fixed_transaction_fee) if sale_price > 0 else ZERO
 
     # -- fulfilment --------------------------------------------------------
     weight = to_decimal(data.weight_lb) if data.weight_lb is not None else None
@@ -232,7 +235,12 @@ def calculate_profitability(
     )
 
     total_fees = money(
-        referral_fee + closing_fee + fulfillment_fee + storage_fee + return_allowance
+        referral_fee
+        + closing_fee
+        + fixed_fee
+        + fulfillment_fee
+        + storage_fee
+        + return_allowance
     )
     total_cost = money(
         acquisition_cost + acquisition_shipping + inbound_shipping + tax + misc_cost + total_fees
@@ -309,6 +317,10 @@ def calculate_profitability(
                 "closing_fee", "Closing fee", closing_fee, -1, f"media category: {data.category}"
             ),
         )
+    if fixed_fee:
+        line_items.insert(
+            2, LineItem("fixed_fee", "Fixed transaction fee", fixed_fee, -1, "flat, per order")
+        )
     if tax:
         line_items.append(
             LineItem("tax", "Acquisition tax", tax, -1, f"{tax_rate:.2%} of acquisition")
@@ -322,6 +334,7 @@ def calculate_profitability(
         acquisition_shipping=acquisition_shipping,
         referral_fee=referral_fee,
         closing_fee=closing_fee,
+        fixed_fee=fixed_fee,
         fulfillment_fee=fulfillment_fee,
         storage_fee=storage_fee,
         inbound_shipping=inbound_shipping,
@@ -387,6 +400,7 @@ def _fixed_costs(data: ProfitabilityInput, fees: FeeAssumptions) -> tuple[Decima
         + fulfillment_fee
         + storage_fee
         + closing
+        + fees.fixed_transaction_fee
         # The fulfilment component of the return allowance does not scale with
         # the sale price, so it belongs on the fixed side.
         + (fulfillment_fee * fees.return_rate * fees.return_loss_rate)

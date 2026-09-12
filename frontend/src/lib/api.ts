@@ -405,6 +405,8 @@ export interface ProviderHealth {
   capabilities: string[];
   is_configured: boolean;
   is_live: boolean;
+  /** "live" calls a market, "fixture" serves canned data, "planned" is unimplemented. */
+  kind: "live" | "fixture" | "planned";
   configuration_note: string | null;
   state: string;
   circuit_state: string;

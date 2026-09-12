@@ -206,6 +206,7 @@ class ReliableProvider(MarketplaceProvider):
         self.display_name = provider.display_name
         self.capabilities = provider.capabilities
         self.is_live = provider.is_live
+        self.kind = provider.kind
         self.timeout_seconds = timeout_seconds or settings.provider_timeout_seconds
         self.max_retries = max_retries if max_retries is not None else settings.provider_max_retries
         self.limiter = RateLimiter(rate_limit_per_second or settings.provider_rate_limit_per_second)

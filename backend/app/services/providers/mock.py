@@ -45,6 +45,7 @@ class MockProvider(MarketplaceProvider):
     """Fixture-backed provider for one marketplace."""
 
     is_live = False
+    kind = "fixture"
     capabilities = frozenset(
         {
             ProviderCapability.SEARCH,

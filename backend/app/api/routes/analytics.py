@@ -34,6 +34,48 @@ def get_accuracy(session: DbSession, auth: Auth) -> dict[str, Any]:
     return prediction_accuracy(session, auth)
 
 
+@router.get("/platforms")
+def list_platforms() -> dict[str, Any]:
+    """Every platform Spreadline knows about, connected or not.
+
+    Answers "what can we connect, and what would each take" from the running
+    system rather than from a roadmap document that drifts from the code.
+    """
+    from app.services.providers.platforms import ALL, PlatformStatus
+
+    def render(definition: Any) -> dict[str, Any]:
+        return {
+            "slug": definition.slug,
+            "display_name": definition.display_name,
+            "role": definition.role.value,
+            "status": definition.status.value,
+            "marketplace": definition.marketplace.value if definition.marketplace else None,
+            "capabilities": [item.value for item in definition.capabilities],
+            "credentials": list(definition.credentials),
+            "signup_url": definition.signup_url,
+            "docs_url": definition.docs_url or None,
+            "cost": definition.cost,
+            "requires_seller_account": definition.requires_seller_account,
+            "notes": definition.notes,
+            "caveats": list(definition.caveats),
+        }
+
+    platforms = [render(definition) for definition in ALL]
+    return {
+        "platforms": platforms,
+        "counts": {
+            status.value: len([d for d in ALL if d.status is status])
+            for status in PlatformStatus
+        },
+        "connectable_without_a_seller_account": [
+            definition.slug
+            for definition in ALL
+            if not definition.requires_seller_account
+            and definition.status is PlatformStatus.LIVE
+        ],
+    }
+
+
 @router.get("/providers")
 def list_providers(providers: Providers) -> list[dict[str, Any]]:
     return [
@@ -44,6 +86,7 @@ def list_providers(providers: Providers) -> list[dict[str, Any]]:
             "capabilities": [item.value for item in info.capabilities],
             "is_configured": info.is_configured,
             "is_live": info.is_live,
+            "kind": info.kind,
             "configuration_note": info.configuration_note,
         }
         for info in providers.info()
@@ -70,6 +113,7 @@ def provider_health(providers: Providers, session: DbSession) -> list[dict[str, 
                 else "not_configured",
                 "circuit_state": provider.circuit.state.value,
                 "is_live": provider.is_live,
+                "kind": provider.kind,
                 "is_configured": provider.is_configured,
                 "request_count": metrics.request_count,
                 "success_count": metrics.success_count,

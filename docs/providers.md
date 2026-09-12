@@ -33,40 +33,79 @@ changes a decision and the other changes a score.
 A provider without credentials raises `ProviderNotConfiguredError` and never
 silently falls back to fixture data.
 
-## Registered providers
+## The platform catalogue
 
-| Slug | Marketplace | Live | Capabilities |
+`services/providers/platforms.py` describes every data source Spreadline knows
+about, connected or not: what it is, what it could answer, what credential it
+needs, what it costs and whether it requires a seller account. It is served at
+`GET /api/v1/platforms` and rendered on the Providers screen, so "what can we
+connect and what would each take" is answered by the running system rather than
+by a roadmap document that drifts from the code.
+
+Three states, and the distinction is deliberate:
+
+| State | Meaning |
+| --- | --- |
+| `live` | Implemented and wired to a real endpoint. Set the credential and it works. |
+| `adapter_ready` | Interface, capabilities and payload mapper implemented and tested; transport unwired. Connecting it is finishing one method. |
+| `planned` | Described, registered, and refuses every call with the reason. |
+
+A planned platform **never returns an empty result**. A stub returning `[]` would
+be indistinguishable from a real provider reporting genuinely empty results, and
+the difference matters everywhere: no offers means no competition data, which
+lowers confidence and changes a decision. Silence has to be loud.
+
+### Live today, free, no seller account
+
+| Slug | Marketplace | Role | Capabilities |
 | --- | --- | --- | --- |
-| `mock_amazon` | amazon | no | all eight |
-| `mock_walmart` | walmart | no | all eight |
-| `amazon` | amazon | yes | search, product, price, offers, inventory, demand |
-| `walmart` | walmart | yes | search, product, price, offers, inventory |
+| `bestbuy` | Best Buy | Source | search, product, price, inventory |
+| `ebay` | eBay | Source and exit | search, product, price, offers, inventory, competition |
 
-`ENABLED_PROVIDERS=mock` expands to both fixture providers, since one marketplace
-alone cannot produce a cross-market opportunity.
+`ENABLED_PROVIDERS=free` registers the pair.
 
-The registry prefers a **live, configured** provider over a fixture. Once
-credentials exist the platform uses them with no code change. An unconfigured
-provider is still registered and appears in `/providers` with the reason it
-cannot be used, rather than vanishing and leaving the operator guessing.
+**Best Buy** is unusually well suited to this platform: it returns `upc`, so the
+identity engine works on real identifiers rather than title similarity, and
+`shippingWeight`, which the fee engine needs and most catalogue APIs omit. It is
+a single retailer, so it declares no offers or competition capability and reports
+`seller_count = None` rather than inventing a market structure that does not
+exist there.
 
-## The live adapters
+**eBay** supports lookup by GTIN, which is the whole ladder working end to end: a
+product identified at a retailer by UPC is found on the marketplace by the same
+identifier. A GTIN search also returns every concurrent listing for that product,
+which is a genuine offer set, so seller count, price dispersion and the lowest
+offer are measured rather than assumed. eBay has no buy box, so the cheapest
+landed offer is marked instead, and that decision lives in `get_offers` rather
+than being asserted per item.
 
-`amazon.py` and `walmart.py` ship with:
+Its application token lives about two hours and is cached in memory behind a
+lock, because exchanging a token per request would spend a meaningful share of a
+5,000 call daily allowance on authentication.
 
-- a full capability declaration,
-- payload mappers (`map_listing`, `map_offer`, `map_price_point`) that are pure,
-  tolerant of field-name variation between API shapes, and unit tested against
-  sample payloads,
-- a transport hook that raises until credentials and a base URL are supplied.
+### Adapter ready
 
-They are deliberately not wired to a live endpoint. This repository has no
-credentials, and a fabricated integration would be worse than an absent one: it
-would produce numbers that look like market data and would be acted on.
+| Slug | Blocker |
+| --- | --- |
+| `amazon` | SP-API needs LWA token exchange and request signing, plus a Professional seller account |
+| `walmart` | Marketplace API needs a seller account and a signed OAuth2 flow |
 
-To make one live: implement `_request` against the chosen source (SP-API, a
-licensed aggregator, whatever the commercial arrangement supports), set the
-credentials in the environment, and add the slug to `ENABLED_PROVIDERS`.
+Payload mappers are implemented and unit tested against sample payloads. Only the
+transport is unwired, and deliberately so: a fabricated live integration produces
+numbers that look like market data and would be acted on.
+
+### Planned
+
+Data feeds: `keepa`, `rainforest`, `bluecart`, `serpapi`. Keepa is the highest
+value addition by some margin, because it supplies years of Amazon price and
+rank history, the one input the statistics and anomaly engines cannot build
+quickly on their own.
+
+Marketplaces and retailers: `shopify`, `etsy`, `target`, `homedepot`.
+
+Wholesale and distributor: `faire`, `alibaba`. Both are flagged with the same
+caveat: minimum order quantity, lead time, duty and freight are not yet inputs to
+the profitability engine, so their economics would be incomplete until they are.
 
 ## Reliability
 

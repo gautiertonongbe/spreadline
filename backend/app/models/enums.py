@@ -13,6 +13,9 @@ from enum import StrEnum
 class Marketplace(StrEnum):
     AMAZON = "amazon"
     WALMART = "walmart"
+    #: Free official APIs, usable for real data without a seller account.
+    EBAY = "ebay"
+    BESTBUY = "bestbuy"
     MOCK = "mock"
 
 
@@ -23,6 +26,8 @@ class IdentifierType(StrEnum):
     ISBN = "isbn"
     ASIN = "asin"
     WALMART_ITEM_ID = "walmart_item_id"
+    EBAY_ITEM_ID = "ebay_item_id"
+    BESTBUY_SKU = "bestbuy_sku"
     MPN = "mpn"
     SKU = "sku"
     MODEL = "model"
@@ -72,7 +77,7 @@ class FulfillmentMethod(StrEnum):
     FBA = "fba"  # Amazon fulfils
     FBM = "fbm"  # merchant fulfils
     WFS = "wfs"  # Walmart fulfils
-    SELLER = "seller"
+    SELLER = "seller"  # the operator ships it, as on eBay
 
 
 class Confidence(StrEnum):
@@ -198,6 +203,8 @@ class Direction(StrEnum):
 
     AMAZON_TO_WALMART = "amazon_to_walmart"
     WALMART_TO_AMAZON = "walmart_to_amazon"
+    BESTBUY_TO_EBAY = "bestbuy_to_ebay"
+    EBAY_TO_AMAZON = "ebay_to_amazon"
     CUSTOM = "custom"
 
 

@@ -15,7 +15,12 @@ from app.core.logging import get_logger
 from app.models.enums import Marketplace
 from app.services.providers.amazon import AmazonProvider
 from app.services.providers.base import MarketplaceProvider, ProviderCapability, ProviderInfo
+from app.services.providers.bestbuy import BestBuyProvider
+from app.services.providers.ebay import EbayProvider
 from app.services.providers.mock import MockProvider
+from app.services.providers.planned import PlannedProvider
+from app.services.providers.platforms import ALL as PLATFORMS
+from app.services.providers.platforms import PlatformStatus
 from app.services.providers.reliability import CallRecord, ReliableProvider
 from app.services.providers.walmart import WalmartProvider
 
@@ -28,11 +33,36 @@ PROVIDER_FACTORIES: dict[str, Callable[[], MarketplaceProvider]] = {
     "mock_walmart": lambda: MockProvider(Marketplace.WALMART),
     "amazon": AmazonProvider,
     "walmart": WalmartProvider,
+    # Live and free: a developer key is enough, no seller account required.
+    "bestbuy": BestBuyProvider,
+    "ebay": EbayProvider,
 }
+
+#: Platforms described in the catalogue but not implemented. They register so
+#: they are visible with their status, and refuse every call.
+PROVIDER_FACTORIES.update(
+    {
+        definition.slug: (lambda d=definition: PlannedProvider(d))
+        for definition in PLATFORMS
+        if definition.status is PlatformStatus.PLANNED
+    }
+)
+
+#: Everything the catalogue knows about, for an operator who wants the whole
+#: picture rather than only what is switched on.
+ALL_PLATFORM_SLUGS = tuple(definition.slug for definition in PLATFORMS)
 
 #: "mock" is shorthand for the pair of fixture providers, since one marketplace
 #: on its own cannot produce a cross-market opportunity.
-_ALIASES = {"mock": ("mock_amazon", "mock_walmart")}
+_ALIASES = {
+    "mock": ("mock_amazon", "mock_walmart"),
+    # The free pairing: a retailer to buy from and a marketplace to sell on,
+    # both reachable with a developer key and no seller account.
+    "free": ("bestbuy", "ebay"),
+    # Everything in the catalogue, connected or not, so the provider screen can
+    # show the full picture.
+    "all": ALL_PLATFORM_SLUGS,
+}
 
 
 class ProviderRegistry:

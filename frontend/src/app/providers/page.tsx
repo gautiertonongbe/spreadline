@@ -1,3 +1,4 @@
+import { PlatformCatalogue } from "@/components/platform-catalogue";
 import {
   Badge,
   Card,
@@ -15,6 +16,18 @@ import { percent, titleCase } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
+const KIND_LABEL: Record<string, string> = {
+  live: "Live market",
+  fixture: "Fixture",
+  planned: "Not implemented",
+};
+
+const KIND_TONE: Record<string, "accent" | "warning" | "neutral"> = {
+  live: "accent",
+  fixture: "warning",
+  planned: "neutral",
+};
+
 const STATE_TONE: Record<string, "success" | "warning" | "danger" | "neutral"> = {
   healthy: "success",
   degraded: "warning",
@@ -31,7 +44,9 @@ export default async function ProvidersPage() {
   }
 
   const live = providers.filter((item) => item.is_live && item.is_configured);
-  const unconfigured = providers.filter((item) => !item.is_configured);
+  const unconfigured = providers.filter(
+    (item) => !item.is_configured && item.kind !== "planned",
+  );
 
   return (
     <div className="space-y-5">
@@ -44,9 +59,9 @@ export default async function ProvidersPage() {
         <Note tone="warning">
           No live provider is configured, so every price, demand figure and
           decision in this application comes from the fixture catalogue rather
-          than from a marketplace. The live adapters below are implemented and
-          tested; they need credentials and a base URL to start returning market
-          data.
+          than from a marketplace. Best Buy and eBay below are implemented and
+          wired to real endpoints: a free developer key for each, with no seller
+          account and no subscription, switches this to real data.
         </Note>
       )}
 
@@ -74,8 +89,8 @@ export default async function ProvidersPage() {
                   </div>
                 </Td>
                 <Td>
-                  <Badge tone={provider.is_live ? "accent" : "warning"}>
-                    {provider.is_live ? "Live market" : "Fixture"}
+                  <Badge tone={KIND_TONE[provider.kind] ?? "neutral"}>
+                    {KIND_LABEL[provider.kind] ?? "Unknown"}
                   </Badge>
                 </Td>
                 <Td>
@@ -111,9 +126,11 @@ export default async function ProvidersPage() {
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card title="Capabilities" subtitle="What each provider is able to answer">
+        <Card title="Capabilities" subtitle="What each implemented provider can answer">
           <div className="space-y-4">
-            {providers.map((provider) => (
+            {providers
+              .filter((item) => item.kind !== "planned")
+              .map((provider) => (
               <div key={provider.slug}>
                 <div className="text-xs text-secondary">{provider.display_name}</div>
                 <div className="mt-2 flex flex-wrap gap-1.5">
@@ -132,8 +149,8 @@ export default async function ProvidersPage() {
                     Last error: {provider.last_error}
                   </div>
                 )}
-              </div>
-            ))}
+                </div>
+              ))}
           </div>
         </Card>
 
@@ -145,18 +162,22 @@ export default async function ProvidersPage() {
             <p className="text-xs text-muted">Every registered provider is configured.</p>
           ) : (
             <div className="space-y-4">
-              {unconfigured.map((provider) => (
+              {unconfigured
+                .filter((item) => item.kind !== "planned")
+                .map((provider) => (
                 <div key={provider.slug}>
                   <div className="text-xs text-secondary">{provider.display_name}</div>
                   <p className="mt-1 text-2xs leading-relaxed text-muted">
                     {provider.configuration_note ?? "No configuration note supplied."}
                   </p>
-                </div>
-              ))}
+                  </div>
+                ))}
             </div>
           )}
         </Card>
       </div>
+
+      <PlatformCatalogue />
     </div>
   );
 }

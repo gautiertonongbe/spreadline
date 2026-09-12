@@ -96,10 +96,10 @@ backend/
     models/      23 tables, multi-tenant from day one
     domains/     catalog, identity, pricing, demand, competition, profitability,
                  quality, risk, opportunities, portfolio, validation, analytics
-    services/    providers (base, mock, amazon, walmart, reliability, registry),
-                 scheduling
+    services/    providers (base, mock, bestbuy, ebay, amazon, walmart,
+                 platforms catalogue, reliability, registry), scheduling, ai
     api/         routes
-  tests/         246 tests
+  tests/         297 tests
   migrations/    alembic
   scripts/       seed
 frontend/        Next.js, TypeScript, Tailwind
@@ -113,17 +113,43 @@ from. Providers declare their capabilities, and a provider that cannot answer
 raises rather than returning an empty result, because "no demand data" and
 "demand of zero" are different facts.
 
-| Provider | State | Notes |
+| Platform | State | What it takes |
 | --- | --- | --- |
-| `mock_amazon`, `mock_walmart` | Ready | 36 fixture products, deterministic, offline |
-| `amazon` | Adapter implemented, transport unwired | Set `AMAZON_PROVIDER_CREDENTIALS` and a base URL |
-| `walmart` | Adapter implemented, transport unwired | Set `WALMART_PROVIDER_CREDENTIALS` and a base URL |
+| **Best Buy** | **Live** | Free developer key, no seller account. Returns UPC and shipping weight. |
+| **eBay** | **Live** | Free developer account, 5,000 calls/day. Supports GTIN lookup. |
+| Amazon | Adapter ready | Mappers implemented and tested; transport unwired. Needs a seller account. |
+| Walmart | Adapter ready | Mappers implemented and tested; transport unwired. Needs a seller account. |
+| `mock_amazon`, `mock_walmart` | Fixture | 36 fixture products, deterministic, offline |
+| Keepa, Rainforest, BlueCart, SerpApi | Planned | Data feeds. Registered with their credential and cost; not implemented. |
+| Shopify, Etsy, Target, Home Depot | Planned | Marketplaces and retailers. Registered; not implemented. |
+| Faire, Alibaba | Planned | Wholesale and distributor sourcing. Registered; not implemented. |
 
-The live adapters ship with real, tested payload mappers and a transport that
-raises `ProviderNotConfiguredError` until credentials exist. This is deliberate:
-a fabricated live integration is worse than an absent one, because it produces
-numbers that look like market data. Adding one is an adapter change; nothing
-above it moves.
+`GET /api/v1/platforms` and the Providers screen list all sixteen with their
+status, capabilities, required credentials and cost, so "what would it take to
+connect X" is answered by the running system rather than by a roadmap document.
+
+**To use real data today, for free**, no seller account and no subscription:
+
+```bash
+# https://developer.bestbuy.com  and  https://developer.ebay.com
+BESTBUY_API_KEY=...
+EBAY_CLIENT_ID=...
+EBAY_CLIENT_SECRET=...
+ENABLED_PROVIDERS=free
+```
+
+Best Buy is the source and eBay the exit market. Both are official APIs, so
+nothing here scrapes. The registry prefers a configured live provider over a
+fixture automatically, so no code changes.
+
+A platform that is registered but not implemented **refuses every call** with the
+reason. It never returns an empty result, because a silent empty is
+indistinguishable from a real one, and "no offers" changes a decision.
+
+The Amazon and Walmart adapters ship with real, tested payload mappers and a
+transport that raises `ProviderNotConfiguredError` until credentials exist. This
+is deliberate: a fabricated live integration is worse than an absent one, because
+it produces numbers that look like market data.
 
 Every call is wrapped in timeouts, bounded retries with exponential backoff and
 full jitter, a token-bucket rate limiter, a circuit breaker and health tracking.
@@ -136,7 +162,7 @@ credential is a permanent answer.
 make test
 ```
 
-246 tests. The fixture catalogue is built around the decisions that are expensive
+297 tests. The fixture catalogue is built around the decisions that are expensive
 to get wrong: false matches, pack and size mismatches, a price that is low because
 the stock is about to run out, a product with three observations pretending to
 have a trend, and a spread that fees erase entirely.
