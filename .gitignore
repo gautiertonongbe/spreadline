@@ -37,3 +37,6 @@ build/
 coverage/
 .coverage
 htmlcov/
+
+# Local tooling
+.claude/
