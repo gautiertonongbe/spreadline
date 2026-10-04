@@ -34,7 +34,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from app.core.clock import utcnow
+from app.core.clock import iso_utc, utcnow
 from app.core.config import settings
 from app.core.money import ratio
 
@@ -62,7 +62,7 @@ class AIOutput:
         return {
             "kind": self.kind,
             "model": self.model,
-            "timestamp": self.timestamp.isoformat(),
+            "timestamp": iso_utc(self.timestamp),
             "confidence": None if self.confidence is None else str(self.confidence),
             "input": self.input,
             "output": self.output,

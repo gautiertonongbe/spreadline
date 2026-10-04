@@ -1,5 +1,5 @@
 import { Badge, Card, Note, Table, Td, Th, Tr } from "@/components/ui";
-import { API_URL } from "@/lib/api";
+import { api } from "@/lib/api";
 
 /**
  * The platform catalogue, rendered from the running system rather than from a
@@ -54,8 +54,7 @@ const STATUS_BLURB: Record<Platform["status"], string> = {
 export async function PlatformCatalogue() {
   let data: PlatformResponse | null = null;
   try {
-    const response = await fetch(`${API_URL}/platforms`, { cache: "no-store" });
-    if (response.ok) data = (await response.json()) as PlatformResponse;
+    data = await api.get<PlatformResponse>("/platforms");
   } catch {
     // The catalogue is informational; it must not break the page.
   }

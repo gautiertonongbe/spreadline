@@ -10,6 +10,7 @@ from decimal import Decimal
 
 import pytest
 
+from app.core.clock import utcnow
 from app.domains.identity.matcher import MatchCandidate, match_listings
 from app.domains.identity.normalization import (
     gtin_check_digit,
@@ -241,3 +242,89 @@ class TestMatching:
         )
         assert result.status is MatchStatus.REJECTED
         assert result.confidence == Decimal("0")
+
+
+class TestMergingDoesNotTakeInnocentRows:
+    """Merging two products must move their children, not delete them.
+
+    ``Product.listings`` and ``Product.identifiers`` are delete-orphan
+    relationships loaded eagerly, and the merge repoints them with a Core-level
+    bulk UPDATE that the loaded collections know nothing about. Without expiring
+    the absorbed product first, ``session.delete`` cascades through a stale
+    collection and takes rows that were moved off it moments earlier.
+
+    It only bites when a child was written earlier in the same transaction, so
+    it stayed invisible until something created a listing and merged it before
+    committing. These tests make that the ordinary case.
+    """
+
+    def _pair(self, session, auth, suffix):
+        """Two products, each with a listing written in this transaction."""
+        from app.models.catalog import MarketplaceListing, Product
+
+        listings = []
+        for index, marketplace in enumerate(("walmart", "amazon")):
+            product = Product(
+                organization_id=auth.organization_id, title=f"Product {index} {suffix}"
+            )
+            session.add(product)
+            session.flush()
+            listing = MarketplaceListing(
+                organization_id=auth.organization_id,
+                product_id=product.id,
+                marketplace=marketplace,
+                external_id=f"{marketplace}-{suffix}",
+                title="Ninja AF101 Air Fryer 4 Qt, Grey",
+                current_price=Decimal("10"),
+            )
+            session.add(listing)
+            session.flush()
+            # Touch the collection so it is loaded, which is the precondition
+            # for the bug: a stale collection is what the delete cascades through.
+            assert product.listings
+            listings.append(listing)
+        return listings
+
+    def test_a_listing_written_in_this_transaction_survives_a_merge(self, session, auth):
+        from app.domains.identity.service import unify_products
+        from app.models.catalog import MarketplaceListing
+
+        source, target = self._pair(session, auth, "merge1")
+        unify_products(session, source, target)
+        session.flush()
+
+        for listing in (source, target):
+            kept = session.get(MarketplaceListing, listing.id)
+            assert kept is not None, "the merge deleted a listing it was supposed to move"
+        assert (
+            session.get(MarketplaceListing, source.id).product_id
+            == session.get(MarketplaceListing, target.id).product_id
+        ), "both sides should end on one canonical product"
+
+    def test_observations_are_moved_rather_than_orphaned(self, session, auth):
+        from app.domains.identity.service import unify_products
+        from app.models.observations import PriceObservation
+
+        source, target = self._pair(session, auth, "merge2")
+        observation = PriceObservation(
+            organization_id=auth.organization_id,
+            product_id=source.product_id,
+            listing_id=source.id,
+            marketplace="walmart",
+            price=Decimal("10"),
+            shipping=Decimal("0"),
+            landed_price=Decimal("10"),
+            observed_at=utcnow(),
+            provider="manual",
+            source="manual",
+            is_simulated=False,
+        )
+        session.add(observation)
+        session.flush()
+
+        survivor = unify_products(session, source, target)
+        session.flush()
+
+        kept = session.get(PriceObservation, observation.id)
+        assert kept is not None, "history must never be orphaned by a merge"
+        assert kept.product_id == survivor.id

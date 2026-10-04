@@ -3,44 +3,53 @@ import type { Config } from "tailwindcss";
 /**
  * Palette and type scale.
  *
- * Two principles, both borrowed from how trading and research desks actually
- * present numbers:
+ * Every colour is a CSS variable holding an RGB triple, resolved in
+ * `globals.css` for each theme and consumed here through Tailwind's
+ * `<alpha-value>` placeholder. That indirection is what makes `bg-buy/12` work
+ * identically on paper and on ink: the opacity modifier still composes, and no
+ * component has to know which theme it is rendering into.
+ *
+ * Two principles hold across both themes, borrowed from how trading and
+ * research desks actually present numbers:
  *
  * 1. Colour carries meaning, never decoration. A recommendation, a risk level
  *    and a confidence each own one colour, so a warm cell always signals the
  *    same thing wherever it appears. The neutrals are deliberately desaturated
  *    so the few meaningful colours carry.
- * 2. The surface is near-black with a warm cast rather than blue-grey, and text
- *    is warm off-white rather than pure white. Pure white on pure black is
- *    fatiguing to read for the length of time an operator spends on a table.
+ * 2. Neither surface is pure. The dark theme is near-black with a warm cast
+ *    rather than blue-grey; the light theme is warm paper rather than white,
+ *    with ink rather than black text. Maximum contrast is fatiguing to read for
+ *    the length of time an operator spends on a table.
  */
+const token = (name: string) => `rgb(var(--${name}) / <alpha-value>)`;
+
 const config: Config = {
   content: ["./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
       colors: {
-        canvas: "#0a0a0c",
-        surface: "#121216",
-        raised: "#1a1a20",
-        overlay: "#212129",
-        border: "#26262f",
-        hairline: "#1e1e25",
-        primary: "#f2efe9",
-        secondary: "#c9c5bd",
-        muted: "#85838f",
-        faint: "#5c5a65",
+        canvas: token("canvas"),
+        surface: token("surface"),
+        raised: token("raised"),
+        overlay: token("overlay"),
+        border: token("border"),
+        hairline: token("hairline"),
+        primary: token("primary"),
+        secondary: token("secondary"),
+        muted: token("muted"),
+        faint: token("faint"),
         // Restrained gold. The one accent, used for emphasis and never for a
         // semantic state, so it cannot be confused with a result.
-        accent: "#c9a961",
-        "accent-dim": "#8a7440",
-        buy: "#5bbf83",
-        review: "#d4a548",
-        pass: "#d86a6a",
+        accent: token("accent"),
+        "accent-dim": token("accent-dim"),
+        buy: token("buy"),
+        review: token("review"),
+        pass: token("pass"),
         risk: {
-          low: "#5bbf83",
-          medium: "#d4a548",
-          high: "#dc8a56",
-          critical: "#d86a6a",
+          low: token("risk-low"),
+          medium: token("risk-medium"),
+          high: token("risk-high"),
+          critical: token("risk-critical"),
         },
       },
       fontFamily: {
@@ -59,12 +68,11 @@ const config: Config = {
         label: "0.1em",
       },
       boxShadow: {
-        card: "0 1px 2px rgba(0,0,0,0.4), 0 8px 24px -12px rgba(0,0,0,0.6)",
-        lift: "0 2px 4px rgba(0,0,0,0.5), 0 16px 40px -16px rgba(0,0,0,0.7)",
+        card: "var(--shadow-card)",
+        lift: "var(--shadow-lift)",
       },
       backgroundImage: {
-        "hairline-top":
-          "linear-gradient(to bottom, rgba(255,255,255,0.045), rgba(255,255,255,0))",
+        "hairline-top": "var(--sheen)",
       },
     },
   },

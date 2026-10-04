@@ -119,9 +119,47 @@ class ProfitabilityResult:
         return self.net_profit > 0
 
     @property
+    def landed_acquisition_cost(self) -> Decimal:
+        """What one unit costs to get hold of, before any selling fee."""
+        return money(self.acquisition_cost + self.acquisition_shipping)
+
+    @property
     def spread(self) -> Decimal:
         """Raw price difference before any cost. Never mistaken for profit."""
-        return money(self.sale_price - (self.acquisition_cost + self.acquisition_shipping))
+        return money(self.sale_price - self.landed_acquisition_cost)
+
+    #: The same figure under the name the rest of the platform uses for it.
+    @property
+    def gross_spread(self) -> Decimal:
+        return self.spread
+
+    @property
+    def other_unit_costs(self) -> Decimal:
+        """Costs of getting the unit ready to sell, other than the price paid.
+
+        Inbound shipping, tax and anything the operator entered. Named and
+        published because without it the published ladder does not reconcile:
+        ``total_cost`` includes these and ``total_fees`` does not, and a reader
+        adding up the two figures on the screen would find a gap with no name.
+
+            total_cost = landed acquisition + other unit costs + total fees
+        """
+        return money(self.inbound_shipping + self.tax + self.misc_cost)
+
+    @property
+    def gross_spread_pct(self) -> Decimal | None:
+        """Gross spread against what was paid, not against the sale price.
+
+        Measured on cost because that is the decision a buyer makes: this is the
+        mark-up they are buying into. Against the sale price it would be a
+        margin, and the two are different numbers that both read as "percent" -
+        which is exactly why both are named explicitly and neither is shown
+        without its label. ``None`` when nothing was paid, never zero.
+        """
+        landed = self.landed_acquisition_cost
+        if landed <= 0:
+            return None
+        return ratio(self.spread / landed)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -141,6 +179,12 @@ class ProfitabilityResult:
             "total_cost": str(self.total_cost),
             "net_profit": str(self.net_profit),
             "spread": str(self.spread),
+            "gross_spread": str(self.gross_spread),
+            "gross_spread_pct": (
+                None if self.gross_spread_pct is None else str(self.gross_spread_pct)
+            ),
+            "landed_acquisition_cost": str(self.landed_acquisition_cost),
+            "other_unit_costs": str(self.other_unit_costs),
             "roi": None if self.roi is None else str(self.roi),
             "margin": None if self.margin is None else str(self.margin),
             "breakeven_sale_price": (

@@ -107,6 +107,52 @@ Wholesale and distributor: `faire`, `alibaba`. Both are flagged with the same
 caveat: minimum order quantity, lead time, duty and freight are not yet inputs to
 the profitability engine, so their economics would be incomplete until they are.
 
+## The one open Amazon source
+
+There is no open source of live Amazon prices. PA-API v5 is retired and answers
+403, its replacement Creators API requires at least 10 qualifying affiliate
+sales in the past 30 days, SP-API requires a Professional seller account, and
+the aggregators are paid. Scraping is out on both terms-of-service and
+engineering-principle grounds.
+
+What is genuinely open is the **Amazon Reviews 2023** dataset from the McAuley
+Lab: 571 million reviews across 33 categories, with item metadata carrying
+parent ASIN, title, store, categories, price at crawl time, rating and details.
+No account, no key, no agreement.
+
+```bash
+# raw_meta_<Category> from https://huggingface.co/datasets/McAuley-Lab/Amazon-Reviews-2023
+python -m scripts.import_amazon_dataset meta_Electronics.jsonl.gz --dry-run
+python -m scripts.import_amazon_dataset meta_Electronics.jsonl.gz --limit 5000
+```
+
+It is not live, and that single fact governs the importer:
+
+- Every observation is written with `observed_at` set to the **crawl date**,
+  never to now. A 2023 price stamped as today would set the reference median and
+  make the anomaly detector measure live prices against a three-year-old
+  baseline while believing both were current.
+- Every row is written with `source="dataset"` and
+  `provider="amazon_reviews_2023"`, so it is distinguishable from a live poll in
+  the database and in any audit.
+- Because the observation is old, the existing freshness logic marks it stale on
+  its own and the data-quality dimension drops. Nothing special makes the
+  platform cautious about this data; the honesty is structural.
+
+A row with no price or no ASIN is skipped, never defaulted: a product with no
+price is not a product priced at zero. Shipping weight is recovered out of the
+free-text `details` dict behind a plausibility guard, which removes the fee
+engine's default-weight assumption for most rows.
+
+`--dry-run` reports exactly what an import would write without writing it, over
+the same mapping the import uses, so the preview and the import cannot disagree.
+Re-running an import adds no duplicate observations: non-live sources dedupe by
+calendar day.
+
+Use it for a realistic development catalogue and for backtesting, which needs
+historical prices with honest timestamps far more than it needs current ones.
+Not as current market data.
+
 ## Reliability
 
 Every provider is wrapped in `ReliableProvider`, which presents the same

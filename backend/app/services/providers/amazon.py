@@ -13,10 +13,26 @@ What exists here:
 * a transport hook that raises ``ProviderNotConfiguredError`` until credentials
   and a base URL are supplied.
 
-To make it live: implement ``_request`` against the chosen data source (SP-API,
-Product Advertising API or a licensed aggregator), set the credentials in the
-environment, and add the slug to ``ENABLED_PROVIDERS``. Nothing above this file
-changes.
+To make it live: implement ``_request`` against the chosen data source, set the
+credentials in the environment, and add the slug to ``ENABLED_PROVIDERS``.
+Nothing above this file changes.
+
+The options, as of September 2026:
+
+* **SP-API**, which needs a Professional seller account and app registration.
+* **Creators API**, which replaced the Product Advertising API. It needs an
+  Amazon Associates account with at least 10 qualifying sales in the trailing
+  30 days, and offers SearchItems, GetItems, GetVariations and GetBrowseNodes.
+* a **licensed aggregator** such as Keepa or Rainforest, which needs neither
+  account but costs per request or per month.
+
+Note that **PA-API v5 is retired**: Amazon stopped accepting new customers and
+calls to it now return HTTP 403. Any guide that tells you to sign up for it is
+out of date.
+
+Scraping is not an option here. Beyond the terms-of-service problem, the public
+scrapers all rely on fingerprint impersonation to evade anti-bot measures, which
+is exactly the category of behaviour this platform refuses to implement.
 """
 
 from __future__ import annotations

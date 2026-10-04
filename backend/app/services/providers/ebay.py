@@ -239,7 +239,6 @@ class EbayProvider(MarketplaceProvider):
     slug = "ebay"
     marketplace = Marketplace.EBAY
     display_name = "eBay"
-    is_live = True
     capabilities = frozenset(
         {
             ProviderCapability.SEARCH,
@@ -278,16 +277,55 @@ class EbayProvider(MarketplaceProvider):
         return bool(self._client_id and self._client_secret)
 
     @property
+    def is_sandbox(self) -> bool:
+        return self.environment == "sandbox"
+
+    @property
+    def is_live(self) -> bool:
+        """Whether an answer from this provider is a market observation.
+
+        False in sandbox, and this is the whole point of the flag. eBay's
+        sandbox is real infrastructure serving invented listings: the OAuth
+        handshake, the rate limits, the error shapes and the payloads are all
+        genuine, and the prices are not. ``catalog.observation_stamp`` derives
+        ``is_simulated`` from exactly this property, so the entire history layer,
+        the dataset totals and the backtest caveats treat a sandbox price the
+        way they treat a fixture, which is what it is.
+        """
+        return not self.is_sandbox
+
+    @property
+    def kind(self) -> str:
+        """What this provider actually is.
+
+        A fourth state alongside live, fixture and planned. A sandbox is not a
+        fixture: it exercises the real transport and the real contract, and
+        collapsing the two would hide the fact that the integration itself is
+        proven. It is not live either, and collapsing *that* way would put
+        invented prices into the record labelled as market data.
+        """
+        return "sandbox" if self.is_sandbox else "live"
+
+    @property
     def configuration_note(self) -> str | None:
+        if self.is_configured and self.is_sandbox:
+            return (
+                f"Sandbox for {self.marketplace_id}. The transport, the OAuth flow and "
+                "the payload contract are real; the prices are invented, so every "
+                "observation it writes is recorded as simulated and no figure derived "
+                "from it is a measurement. Set EBAY_ENVIRONMENT=production with a "
+                "production keyset to call the market."
+            )
         if self.is_configured:
             return (
-                f"Live against {self.environment} for {self.marketplace_id}. "
+                f"Live against production for {self.marketplace_id}. "
                 "Free developer account, 5,000 calls per day by default."
             )
         return (
-            "Not configured: set EBAY_CLIENT_ID and EBAY_CLIENT_SECRET. A free "
-            "developer account at developer.ebay.com issues them instantly; no "
-            "seller account and no per-request cost."
+            "Not configured: set EBAY_CLIENT_ID and EBAY_CLIENT_SECRET. Registering "
+            "at developer.ebay.com is free, but the account is reviewed before any "
+            "keyset can be created. A sandbox keyset is immediate after that; "
+            "production Buy API access needs an eBay Partner Network application."
         )
 
     async def _client_or_new(self) -> httpx.AsyncClient:

@@ -17,7 +17,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from app.core.clock import age_seconds, utcnow
+from app.core.clock import age_seconds, iso_utc, utcnow
 from app.core.config import settings
 from app.core.money import ratio
 from app.models.enums import Confidence, DataQualityDimension
@@ -67,7 +67,7 @@ class QualityDimension:
             "confidence": self.confidence.value,
             "score": str(self.score),
             "reason": self.reason,
-            "observed_at": self.observed_at.isoformat() if self.observed_at else None,
+            "observed_at": iso_utc(self.observed_at),
             "is_stale": self.is_stale,
             "source": self.source,
         }

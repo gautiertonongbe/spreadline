@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
@@ -36,8 +37,11 @@ from app.domains.competition.service import (
     assess_competition,
 )
 from app.domains.demand.service import DemandAssessment, DemandPoint, assess_demand
+from app.domains.history import capture as history_capture
+from app.domains.history import service as history
 from app.domains.identity.service import resolve_match
 from app.domains.identity.similarity import title_similarity
+from app.domains.opportunities import manual
 from app.domains.opportunities.context import AnalysisContext, ListingContext
 from app.domains.opportunities.decision import (
     DEFAULT_DECISION_POLICY,
@@ -53,6 +57,7 @@ from app.domains.opportunities.scoring import (
 )
 from app.domains.opportunities.stress import StressTestResult, run_stress_test
 from app.domains.pricing.anomaly import PriceAnomaly, detect_anomaly
+from app.domains.pricing.spread_evidence import SpreadEvidence, assess_spread
 from app.domains.pricing.statistics import PriceHistoryAnalysis, PricePoint, analyze_prices
 from app.domains.profitability.assumptions import FeeAssumptions, assumptions_for
 from app.domains.profitability.engine import (
@@ -118,6 +123,9 @@ class AnalysisResult:
     score: OpportunityScore
     decision: Decision
     stress: StressTestResult | None = None
+    #: Whether today's spread is a standing feature of these markets or a
+    #: recent move. ``None`` only on a context built before this ran.
+    spread_evidence: SpreadEvidence | None = None
     #: Set when the analysis was persisted.
     opportunity_id: str | None = None
     notes: list[str] = field(default_factory=list)
@@ -139,6 +147,9 @@ class AnalysisResult:
             "score": self.score.as_dict(),
             "decision": self.decision.as_dict(),
             "stress_test": self.stress.as_dict() if self.stress else None,
+            "spread_evidence": (
+                self.spread_evidence.as_dict() if self.spread_evidence else None
+            ),
             "notes": self.notes,
         }
 
@@ -174,7 +185,31 @@ async def ingest_listing(
     raw = await provider.get_product(external_id)
     listing = catalog.upsert_listing(session, auth.organization_id, raw)
     catalog.resolve_product(session, auth.organization_id, raw, listing)
-    catalog.snapshot_current_price(session, auth.organization_id, listing, provider=provider.slug)
+
+    # One stamp for every observation this call produces. Built once because the
+    # identifier lookup is a query, and stated explicitly rather than inferred so
+    # that a fixture answer can never be recorded as a market observation.
+    stamp = catalog.observation_stamp(
+        session, listing, provider=provider.slug, is_simulated=not provider.is_live
+    )
+    catalog.snapshot_current_price(
+        session,
+        auth.organization_id,
+        listing,
+        provider=provider.slug,
+        stamp=stamp,
+        source=history_capture.SOURCE_ANALYSIS,
+    )
+    # Anything analysed enters the observation universe. The dataset is only
+    # worth owning if it kept observing after the question that prompted it.
+    history.track(
+        session,
+        auth.organization_id,
+        marketplace=marketplace,
+        external_id=external_id,
+        listing=listing,
+        reason=history.REASON_ANALYSIS,
+    )
     if not provider.is_live:
         notes.append(
             f"{marketplace.value} data came from {provider.display_name}, which is "
@@ -205,7 +240,8 @@ async def ingest_listing(
             listing,
             points,
             provider=provider.slug,
-            source="provider_history",
+            source=history_capture.SOURCE_PROVIDER_HISTORY,
+            stamp=stamp,
         )
 
     async def _demand() -> None:
@@ -213,7 +249,12 @@ async def ingest_listing(
             return
         points = await provider.get_demand(external_id, days=DEMAND_DAYS)
         catalog.record_demand_observations(
-            session, auth.organization_id, listing, points, provider=provider.slug
+            session,
+            auth.organization_id,
+            listing,
+            points,
+            provider=provider.slug,
+            stamp=stamp,
         )
 
     async def _competition() -> None:
@@ -221,7 +262,12 @@ async def ingest_listing(
             return
         points = await provider.get_competition(external_id, days=COMPETITION_DAYS)
         catalog.record_competition_observations(
-            session, auth.organization_id, listing, points, provider=provider.slug
+            session,
+            auth.organization_id,
+            listing,
+            points,
+            provider=provider.slug,
+            stamp=stamp,
         )
 
     for coroutine in (_offers(), _history(), _demand(), _competition()):
@@ -342,21 +388,31 @@ async def find_counterpart(
 # --------------------------------------------------------------------------
 
 
-def load_price_points(session: Session, listing_id: str) -> list[PricePoint]:
-    rows = session.scalars(
-        select(PriceObservation)
-        .where(PriceObservation.listing_id == listing_id)
-        .order_by(PriceObservation.observed_at)
-    )
+def load_price_points(
+    session: Session, listing_id: str, *, as_of: datetime | None = None
+) -> list[PricePoint]:
+    """Stored price observations for one listing.
+
+    ``as_of`` truncates the series to what existed at that instant. It is the
+    single most important argument in this module: a backtest that can see a
+    price recorded after its simulated present is not a backtest, it is a
+    memory of the answer. Defaulting to ``None`` keeps live analysis unchanged.
+    """
+    query = select(PriceObservation).where(PriceObservation.listing_id == listing_id)
+    if as_of is not None:
+        query = query.where(PriceObservation.observed_at <= as_of)
+    rows = session.scalars(query.order_by(PriceObservation.observed_at))
     return [PricePoint(price=row.landed_price, observed_at=row.observed_at) for row in rows]
 
 
-def load_demand_points(session: Session, listing_id: str) -> list[DemandPoint]:
-    rows = session.scalars(
-        select(DemandObservation)
-        .where(DemandObservation.listing_id == listing_id)
-        .order_by(DemandObservation.observed_at)
-    )
+def load_demand_points(
+    session: Session, listing_id: str, *, as_of: datetime | None = None
+) -> list[DemandPoint]:
+    """Stored demand observations, optionally truncated to a point in time."""
+    query = select(DemandObservation).where(DemandObservation.listing_id == listing_id)
+    if as_of is not None:
+        query = query.where(DemandObservation.observed_at <= as_of)
+    rows = session.scalars(query.order_by(DemandObservation.observed_at))
     return [
         DemandPoint(
             sales_rank=row.sales_rank,
@@ -370,12 +426,14 @@ def load_demand_points(session: Session, listing_id: str) -> list[DemandPoint]:
     ]
 
 
-def load_competition_points(session: Session, listing_id: str) -> list[CompetitionPoint]:
-    rows = session.scalars(
-        select(CompetitionObservation)
-        .where(CompetitionObservation.listing_id == listing_id)
-        .order_by(CompetitionObservation.observed_at)
-    )
+def load_competition_points(
+    session: Session, listing_id: str, *, as_of: datetime | None = None
+) -> list[CompetitionPoint]:
+    """Stored competition observations, optionally truncated to a point in time."""
+    query = select(CompetitionObservation).where(CompetitionObservation.listing_id == listing_id)
+    if as_of is not None:
+        query = query.where(CompetitionObservation.observed_at <= as_of)
+    rows = session.scalars(query.order_by(CompetitionObservation.observed_at))
     return [
         CompetitionPoint(
             observed_at=row.observed_at,
@@ -659,12 +717,26 @@ def evaluate(context: AnalysisContext, options: AnalysisOptions) -> AnalysisResu
     risk = assess_risk(context)
     score = score_opportunity(context, risk, model=options.scoring_model)
     decision = decide(context, risk, score, policy=options.decision_policy)
+    # Whether today's gap is the normal state of these two markets. Read from
+    # the same histories the statistics came from, so it costs no extra fetch.
+    spread_evidence = assess_spread(
+        current_spread=context.profitability.gross_spread,
+        source_prices=context.source_prices,
+        target_prices=context.target_prices,
+    )
     stress = None
     if options.run_stress_test:
         stress = run_stress_test(
             context, weight_lb=context.weight_lb, cubic_feet=context.cubic_feet
         )
-    return AnalysisResult(context=context, risk=risk, score=score, decision=decision, stress=stress)
+    return AnalysisResult(
+        context=context,
+        risk=risk,
+        score=score,
+        decision=decision,
+        stress=stress,
+        spread_evidence=spread_evidence,
+    )
 
 
 async def analyze_pair(
@@ -767,8 +839,20 @@ async def analyze_pair(
 
 
 def _provider_is_live(registry: ProviderRegistry, listing: MarketplaceListing) -> bool:
+    """Whether this listing's price is a real observation of a market.
+
+    Hand-entered listings are, and they are the one case that is not a provider.
+    A person opened the page and read the price off it, so nothing about it is
+    invented; it is the registry that cannot answer, because nothing fetched.
+    Falling through to the generic "unknown provider means not live" would have
+    labelled a price somebody verified with their own eyes as fixture data,
+    which is a worse lie than the one that rule exists to prevent.
+    """
+    provider = listing.provider or ""
+    if provider == manual.MANUAL_PROVIDER:
+        return True
     try:
-        return registry.get(listing.provider or "").is_live
+        return registry.get(provider).is_live
     except ProviderError:
         return False
 

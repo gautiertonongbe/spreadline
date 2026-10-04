@@ -26,6 +26,21 @@ def ensure_utc(value: datetime) -> datetime:
     return value.astimezone(UTC)
 
 
+def iso_utc(value: datetime | None) -> str | None:
+    """Serialise a timestamp with an explicit UTC offset, or ``None``.
+
+    Anything hand-built into a payload dict goes through here rather than
+    calling ``isoformat()`` directly. A naive ``isoformat()`` emits
+    ``2026-09-12T21:05:45`` with nothing saying which zone that is, and every
+    JavaScript client then parses it as local time: west of UTC the value lands
+    hours in the future and a timestamp four minutes old renders as a time
+    still to come.
+    """
+    if value is None:
+        return None
+    return ensure_utc(value).isoformat()
+
+
 def age_seconds(value: datetime, *, now: datetime | None = None) -> float:
     return ((now or utcnow()) - ensure_utc(value)).total_seconds()
 

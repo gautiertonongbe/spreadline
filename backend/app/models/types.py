@@ -35,7 +35,14 @@ class GUID(TypeDecorator):
     def process_bind_param(self, value: Any, dialect) -> str | None:  # type: ignore[no-untyped-def]
         if value is None:
             return None
-        return str(uuid.UUID(str(value)))
+        try:
+            return str(uuid.UUID(str(value)))
+        except (ValueError, AttributeError, TypeError):
+            # A value that is not a UUID is passed through rather than raised on.
+            # Every id in this schema arrives from a URL, and a malformed one
+            # should match no row and produce the route's own 404, not a 500
+            # from inside the type layer on the way to the query.
+            return str(value)
 
     def process_result_value(self, value: Any, dialect) -> str | None:  # type: ignore[no-untyped-def]
         if value is None:

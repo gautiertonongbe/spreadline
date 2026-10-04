@@ -86,6 +86,36 @@ class Settings(BaseSettings):
     ttl_product_metadata_seconds: int = 604800  # 7 d
 
     # --- Scheduling --------------------------------------------------------
+    # --- Spreadline's own history -------------------------------------
+    #: Whether provider answers are persisted as observations. On by default:
+    #: the dataset only has value if it was accumulating from the first day, and
+    #: a capture that has to be switched on is one that was off when it mattered.
+    history_capture_enabled: bool = True
+    #: Listings polled per scheduled run. Bounded so a scheduled job cannot grow
+    #: into an unplanned provider bill.
+    history_refresh_batch_size: int = 25
+    #: How often the universe refresh runs. What each listing is actually due for
+    #: is its own interval; this is only how often the question is asked.
+    history_refresh_interval_seconds: int = 900
+    #: Upper bound on the tracked universe. Spreadline observes what the operator
+    #: works on; it does not crawl a marketplace.
+    history_universe_limit: int = 500
+
+    # --- Sessions ---------------------------------------------------------
+    #: How long a session lives at the outside, and how long it may sit idle.
+    #: The idle limit is the one that matters day to day: a browser left open on
+    #: a machine somebody walked away from should stop being a way in.
+    session_ttl_hours: int = 720  # 30 days
+    session_idle_timeout_minutes: int = 10080  # 7 days
+    #: Whether the session cookie is marked Secure. On everywhere but plain-HTTP
+    #: local development, where marking it Secure means no cookie at all.
+    secure_cookies: bool = True
+
+    #: How long an execution instruction stays actionable. An authorisation to
+    #: pay up to a price is only as good as the price that justified it, so it
+    #: expires rather than waiting indefinitely for somebody to get to it.
+    execution_instruction_ttl_hours: int = 48
+
     scheduler_enabled: bool = False
     scheduler_backend: Literal["apscheduler", "noop"] = "apscheduler"
 

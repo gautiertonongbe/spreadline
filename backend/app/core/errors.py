@@ -43,6 +43,27 @@ class ValidationError(SpreadlineError):
     message = "The request could not be validated."
 
 
+class AuthenticationError(SpreadlineError):
+    """No valid credential, or the wrong one.
+
+    401 rather than 403: the caller is not identified, as opposed to identified
+    and not permitted. The two are different facts and the client acts on them
+    differently, so they do not share a status code here.
+    """
+
+    status_code = 401
+    code = "not_authenticated"
+    message = "Sign in to continue."
+
+
+class ForbiddenError(SpreadlineError):
+    """Identified, and not allowed to do this."""
+
+    status_code = 403
+    code = "forbidden"
+    message = "This account may not do that."
+
+
 class ConflictError(SpreadlineError):
     status_code = 409
     code = "conflict"

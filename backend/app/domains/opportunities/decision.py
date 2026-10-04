@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 
-from app.core.money import display, display_score
+from app.core.money import display_currency, display_score
 from app.domains.opportunities.context import AnalysisContext
 from app.domains.opportunities.scoring import OpportunityScore
 from app.domains.risk.engine import RiskAssessmentResult
@@ -105,7 +105,7 @@ def _build_gates(
     gates.append(
         Gate(
             code="product_identity",
-            label="Product identity",
+            label="Confirmed to be the same item",
             passed=match.status in {MatchStatus.CONFIRMED, MatchStatus.PROBABLE},
             detail=match.summary,
             is_hard=True,
@@ -114,11 +114,16 @@ def _build_gates(
     gates.append(
         Gate(
             code="positive_profit",
-            label="Positive net profit",
+            label="Makes money at all",
             passed=profitability.net_profit > 0,
             detail=(
-                f"Net profit {display(profitability.net_profit)} per unit against a total cost of "
-                f"{display(profitability.total_cost)}."
+                f"It sells for {display_currency(profitability.sale_price)} and costs "
+                f"{display_currency(profitability.total_cost)} all in, so you "
+                + (
+                    f"make {display_currency(profitability.net_profit)} per item."
+                    if profitability.net_profit > 0
+                    else f"lose {display_currency(abs(profitability.net_profit))} per item."
+                )
             ),
             is_hard=True,
         )
@@ -126,16 +131,20 @@ def _build_gates(
     gates.append(
         Gate(
             code="source_available",
-            label="Source is purchasable",
+            label="Actually in stock to buy",
             passed=context.source.availability.value != "out_of_stock",
-            detail=f"Source availability: {context.source.availability.value}.",
+            detail=(
+                "It is out of stock where you would buy it."
+                if context.source.availability.value == "out_of_stock"
+                else f"In stock where you would buy it ({context.source.availability.value})."
+            ),
             is_hard=True,
         )
     )
     gates.append(
         Gate(
             code="no_blocking_risk",
-            label="No blocking risk signal",
+            label="No dealbreaker warnings",
             passed=not risk.has_blocking,
             detail=(
                 "; ".join(signal.message for signal in risk.blocking_signals)
@@ -148,16 +157,16 @@ def _build_gates(
     gates.append(
         Gate(
             code="min_profit",
-            label=f"Net profit at or above {display(policy.min_net_profit)}",
+            label=f"Makes at least {display_currency(policy.min_net_profit)} per item",
             passed=profitability.net_profit >= policy.min_net_profit,
-            detail=f"Net profit {display(profitability.net_profit)}.",
+            detail=f"It makes {display_currency(profitability.net_profit)} per item.",
             is_hard=False,
         )
     )
     gates.append(
         Gate(
             code="min_roi",
-            label=f"ROI at or above {policy.min_roi:.0%}",
+            label=f"Returns at least {policy.min_roi:.0%} on your money",
             passed=profitability.roi is not None and profitability.roi >= policy.min_roi,
             detail=(
                 f"ROI {profitability.roi:.1%}."
@@ -170,7 +179,7 @@ def _build_gates(
     gates.append(
         Gate(
             code="min_margin",
-            label=f"Margin at or above {policy.min_margin:.0%}",
+            label=f"Keeps at least {policy.min_margin:.0%} of the sale price",
             passed=profitability.margin is not None and profitability.margin >= policy.min_margin,
             detail=(
                 f"Margin {profitability.margin:.1%}."
@@ -183,7 +192,7 @@ def _build_gates(
     gates.append(
         Gate(
             code="match_confidence",
-            label=f"Match confidence at or above {policy.min_match_confidence:.0%}",
+            label=f"At least {policy.min_match_confidence:.0%} sure it is the same item",
             passed=match.confidence >= policy.min_match_confidence,
             detail=f"{match.confidence:.0%} via {match.method.value}.",
             is_hard=False,
@@ -192,7 +201,7 @@ def _build_gates(
     gates.append(
         Gate(
             code="data_quality",
-            label=f"Data quality at or above {display_score(policy.min_data_quality)}",
+            label="Enough reliable data to judge it",
             passed=context.quality.score >= policy.min_data_quality,
             detail=f"Data quality {display_score(context.quality.score)}/100.",
             is_hard=False,
@@ -201,7 +210,7 @@ def _build_gates(
     gates.append(
         Gate(
             code="risk_level",
-            label=f"Risk at or below {policy.max_risk_for_buy.value}",
+            label=f"Risk no higher than {policy.max_risk_for_buy.value}",
             passed=risk.level.rank <= policy.max_risk_for_buy.rank,
             detail=f"Risk level {risk.level.value} ({display_score(risk.score)}/100).",
             is_hard=False,
@@ -211,7 +220,7 @@ def _build_gates(
         gates.append(
             Gate(
                 code="demand_evidence",
-                label="Demand evidence exists",
+                label="Evidence that it actually sells",
                 passed=context.demand.confidence is not Confidence.NONE,
                 detail=(
                     f"Demand confidence {context.demand.confidence.value}"
@@ -233,7 +242,7 @@ def _build_gates(
         gates.append(
             Gate(
                 code="no_elevated_risk_signal",
-                label="No high-severity risk signal",
+                label="No serious warnings",
                 passed=not elevated,
                 detail=(
                     "; ".join(signal.message for signal in elevated)
@@ -246,7 +255,7 @@ def _build_gates(
     gates.append(
         Gate(
             code="score_threshold",
-            label=f"Score at or above {display_score(policy.min_score_for_buy)}",
+            label=f"Overall score at least {display_score(policy.min_score_for_buy)}",
             passed=score.total >= policy.min_score_for_buy,
             detail=f"Score {display_score(score.total)}/100.",
             is_hard=False,
@@ -263,13 +272,13 @@ def _reasons(context: AnalysisContext, score: OpportunityScore) -> list[str]:
     if profitability.roi is not None and profitability.roi > 0:
         reasons.append(
             f"{profitability.roi:.0%} projected ROI "
-            f"({display(profitability.net_profit)} profit on "
-            f"{display(profitability.acquisition_cost)} acquisition cost)"
+            f"({display_currency(profitability.net_profit)} profit on "
+            f"{display_currency(profitability.acquisition_cost)} spent)"
         )
     reasons.append(
-        f"Spread of {display(profitability.spread)} before fees, "
-        f"{display(profitability.net_profit)} after all "
-        f"{display(profitability.total_fees)} of fees"
+        f"{display_currency(profitability.spread)} gap between the two prices, "
+        f"{display_currency(profitability.net_profit)} left after "
+        f"{display_currency(profitability.total_fees)} of fees"
     )
 
     reference = context.target_prices.reference
@@ -306,11 +315,34 @@ def _reasons(context: AnalysisContext, score: OpportunityScore) -> list[str]:
         ) / profitability.sale_price
         if headroom > 0:
             reasons.append(
-                f"Exit price can fall {headroom:.0%} to "
-                f"{display(profitability.breakeven_sale_price)} "
-                "before the position breaks even"
+                f"The selling price could drop {headroom:.0%}, to "
+                f"{display_currency(profitability.breakeven_sale_price)}, "
+                "before you stop making money"
             )
     return reasons
+
+
+def _per_item(context: AnalysisContext) -> str:
+    """The profit, phrased the way the person spending the money thinks of it.
+
+    A headline that leads with a score answers a question nobody asked. The
+    first thing a buyer wants from any of this is how much they make on one
+    unit, so every headline states that and the score comes second.
+    """
+    profit = context.profitability.net_profit
+    roi = context.profitability.roi
+    phrase = f"{display_currency(profit)} per item"
+    if roi is None:
+        return phrase
+    # One decimal place, matching the figure shown beside this sentence on the
+    # same screen. Rounding to a whole number here printed "a 32% return" next
+    # to a panel reading 31.8%, and a reader who notices that stops trusting
+    # both numbers.
+    percentage = f"{roi:.1%}"
+    # "a 18% return" is the kind of small wrongness that makes generated prose
+    # read as generated prose.
+    article = "an" if percentage.lstrip("-").startswith(("8", "11", "18")) else "a"
+    return f"{phrase}, {article} {percentage} return"
 
 
 def decide(
@@ -342,9 +374,9 @@ def decide(
         return Decision(
             recommendation=Recommendation.PASS,
             headline=(
-                f"Score {display_score(score.total)}/100 is below the "
-                f"{display_score(policy.min_score_for_review)} "
-                "threshold for further review."
+                f"Not worth your time. It would make {_per_item(context)}, "
+                f"but it scores {display_score(score.total)} out of 100, below the "
+                f"{display_score(policy.min_score_for_review)} worth a second look."
             ),
             reasons=reasons,
             risks=risks,
@@ -356,8 +388,8 @@ def decide(
         return Decision(
             recommendation=Recommendation.BUY,
             headline=(
-                f"Score {display_score(score.total)}/100 with {risk.level.value} risk; "
-                "every threshold met."
+                f"Worth buying. You make {_per_item(context)} after every fee, "
+                f"and the risk is {risk.level.value}."
             ),
             reasons=reasons,
             risks=risks,
@@ -365,12 +397,16 @@ def decide(
             policy_version=policy.version,
         )
 
+    count = len(soft_failures)
     return Decision(
         recommendation=Recommendation.REVIEW,
+        # Leads with the money, because that is what the reader came for, then
+        # says how many things to check. The specific requirements are carried on
+        # the decision and rendered right next to this line, so listing them here
+        # printed the same fact twice.
         headline=(
-            f"Score {display_score(score.total)}/100, held for review: "
-            + "; ".join(gate.label.lower() + " not met" for gate in soft_failures[:3])
-            + ("." if len(soft_failures) <= 3 else f", and {len(soft_failures) - 3} more.")
+            f"Worth a look, but check {count} thing{'' if count == 1 else 's'} first. "
+            f"It would make {_per_item(context)} after every fee."
         ),
         reasons=reasons,
         risks=[gate.detail for gate in soft_failures] + risks,

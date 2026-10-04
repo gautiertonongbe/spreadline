@@ -16,7 +16,7 @@ import {
   Value,
 } from "@/components/ui";
 import { endpoints, type OpportunitySummary, type Page } from "@/lib/api";
-import { money, percent, relativeDate, score } from "@/lib/format";
+import { money, percent, relativeDate, score, titleCase } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -47,9 +47,108 @@ function buildQuery(params: Record<string, string | string[] | undefined>): stri
   return query.toString();
 }
 
+/** The same page with one parameter changed, so a view is a shareable link. */
+function withParam(
+  params: Record<string, string | string[] | undefined>,
+  key: string,
+  value: string | null,
+): string {
+  const query = new URLSearchParams();
+  for (const [name, raw] of Object.entries(params)) {
+    if (name === key || raw === undefined) continue;
+    if (Array.isArray(raw)) raw.forEach((item) => query.append(name, item));
+    else query.set(name, raw);
+  }
+  if (value !== null) query.set(key, value);
+  const rendered = query.toString();
+  return rendered ? `/opportunities?${rendered}` : "/opportunities";
+}
+
 function profitTone(value: string | null): string {
   if (value === null) return "text-muted";
   return Number(value) >= 0 ? "text-buy" : "text-pass";
+}
+
+/**
+ * One decision, at a glance.
+ *
+ * A reseller comparing candidates is asking one question: which of these is
+ * worth my next hour. That question is answered by the call, the money, and the
+ * one thing holding it back. It is not answered any better by thirteen columns,
+ * and thirteen columns cost the reader the time the tool was supposed to save,
+ * so the full table is still here, one click away, and not in the way.
+ */
+function DecisionRow({ row }: { row: OpportunitySummary }) {
+  const tone =
+    row.recommendation === "buy" ? "buy" : row.recommendation === "review" ? "review" : "pass";
+
+  return (
+    <Link
+      href={`/opportunities/${row.id}`}
+      className="group block border-b border-hairline px-5 py-4 transition last:border-b-0 hover:bg-raised/50"
+    >
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-6">
+        <div className="flex shrink-0 items-center gap-3 lg:w-[112px] lg:flex-col lg:items-start lg:gap-2">
+          <RecommendationBadge value={row.recommendation} />
+          <div className="flex items-baseline gap-1.5 lg:w-full">
+            <span className="numeric text-[0.9375rem] font-medium text-primary">
+              {score(row.score)}
+            </span>
+            <span className="text-3xs uppercase tracking-label text-faint">score</span>
+          </div>
+          <div className="hidden w-full lg:block">
+            <ScoreBar value={Number(row.score ?? 0)} tone={tone} />
+          </div>
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[0.875rem] font-medium text-primary transition group-hover:text-accent">
+            {row.title ?? `${row.source_marketplace} to ${row.target_marketplace}`}
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-faint">
+            {row.brand && <span>{row.brand}</span>}
+            <span className="whitespace-nowrap">
+              Buy {titleCase(row.source_marketplace)} · Sell {titleCase(row.target_marketplace)}
+            </span>
+            <RiskBadge value={row.risk_level} />
+            <span>{percent(row.match_confidence, 0)} same item</span>
+          </div>
+          {row.headline && (
+            <p className="mt-2 line-clamp-2 max-w-2xl text-xs leading-relaxed text-muted">
+              {row.headline}
+            </p>
+          )}
+          {row.primary_blocker && (
+            <div className="mt-2 inline-flex items-center gap-2 rounded bg-raised px-2 py-1 text-2xs text-secondary">
+              <span className="h-1.5 w-1.5 rounded-full bg-review" />
+              {row.primary_blocker}
+            </div>
+          )}
+        </div>
+
+        <div className="grid shrink-0 grid-cols-3 gap-x-6 text-right lg:w-[300px]">
+          <div>
+            <div className="label">You make</div>
+            <div className={`numeric mt-1 text-[0.9375rem] ${profitTone(row.net_profit)}`}>
+              {money(row.net_profit)}
+            </div>
+          </div>
+          <div>
+            <div className="label">Return</div>
+            <div className="numeric mt-1 text-[0.9375rem] text-secondary">
+              <Value>{percent(row.roi)}</Value>
+            </div>
+          </div>
+          <div>
+            <div className="label">Max to pay</div>
+            <div className="numeric mt-1 text-[0.9375rem] text-secondary">
+              <Value>{money(row.max_acquisition_cost)}</Value>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Link>
+  );
 }
 
 export default async function OpportunitiesPage({
@@ -58,6 +157,7 @@ export default async function OpportunitiesPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
+  const view = params.view === "full" ? "full" : "quick";
 
   let data: Page<OpportunitySummary>;
   try {
@@ -72,11 +172,33 @@ export default async function OpportunitiesPage({
     (key) => key !== "sort" && key !== "descending" && params[key] !== undefined,
   );
 
+  const views: { key: "quick" | "full"; label: string; href: string }[] = [
+    { key: "quick", label: "Decisions", href: withParam(params, "view", null) },
+    { key: "full", label: "Full table", href: withParam(params, "view", "full") },
+  ];
+
   return (
     <div>
       <PageHeader
         title="Opportunities"
-        description="Ranked by score. A candidate that cannot be bought scores zero and sorts to the bottom, so a large apparent spread on a rejected match never reaches the top of this table."
+        description="What to buy, what to check first, and what to skip. Anything you could not actually buy is scored zero and sinks to the bottom."
+        actions={
+          <div className="inline-flex items-center gap-0.5 rounded-full border border-border bg-raised p-0.5">
+            {views.map((item) => (
+              <Link
+                key={item.key}
+                href={item.href}
+                className={
+                  view === item.key
+                    ? "rounded-full bg-surface px-3 py-1 text-2xs text-primary shadow-card"
+                    : "rounded-full px-3 py-1 text-2xs text-faint transition hover:text-secondary"
+                }
+              >
+                {item.label}
+              </Link>
+            ))}
+          </div>
+        }
       />
 
       <div className="mb-5">
@@ -103,6 +225,12 @@ export default async function OpportunitiesPage({
             )
           }
         />
+      ) : view === "quick" ? (
+        <Card flush>
+          {data.items.map((row) => (
+            <DecisionRow key={row.id} row={row} />
+          ))}
+        </Card>
       ) : (
         <Card flush>
           <Table>

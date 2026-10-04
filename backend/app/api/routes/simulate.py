@@ -9,6 +9,7 @@ from fastapi import APIRouter
 from sqlalchemy import select
 
 from app.api.deps import Auth, DbSession
+from app.core.clock import iso_utc
 from app.core.money import money
 from app.domains.portfolio.capital import (
     AllocationCandidate,
@@ -115,7 +116,7 @@ def list_plans(session: DbSession, auth: Auth, limit: int = 25) -> list[dict[str
             "expected_roi": str(row.expected_roi) if row.expected_roi is not None else None,
             "position_count": len(row.allocations or []),
             "model_version": row.model_version,
-            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "created_at": iso_utc(row.created_at),
         }
         for row in rows
     ]

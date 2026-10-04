@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
-from app.core.clock import ensure_utc, utcnow
+from app.core.clock import ensure_utc, iso_utc, utcnow
 from app.core.money import money, ratio
 from app.models.enums import Confidence, TrendDirection
 
@@ -104,12 +104,8 @@ class WindowStats:
             "trend_pct": num(self.trend_pct),
             "max_drawdown": num(self.max_drawdown),
             "recovery_pct": num(self.recovery_pct),
-            "first_observed_at": (
-                self.first_observed_at.isoformat() if self.first_observed_at else None
-            ),
-            "last_observed_at": (
-                self.last_observed_at.isoformat() if self.last_observed_at else None
-            ),
+            "first_observed_at": iso_utc(self.first_observed_at),
+            "last_observed_at": iso_utc(self.last_observed_at),
             "reason": self.reason,
         }
 

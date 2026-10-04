@@ -149,8 +149,11 @@ the unit has to sell.
 
 ## Deliberately deferred
 
-Machine learning, until there is clean outcome data to learn from. Backtesting is
-architecturally supported (append-only observations, UTC everywhere, frozen
-assumptions) but not implemented. Real authentication, behind a seam that is
-already in place. Portfolio optimisation. Additional marketplaces, which the
-provider abstraction is designed to absorb.
+Machine learning, until there is clean outcome data to learn from. Exact
+portfolio
+optimisation: the allocator ranks candidates on profit per dollar and walks the
+list, which is a greedy solution to a constrained knapsack rather than a proved
+optimum. That is deliberate. An exact optimum over integer units, per-position
+caps and three exposure limits is both expensive and unexplainable, and a plan
+nobody can follow is not reviewable. Additional marketplaces, which the provider
+abstraction is designed to absorb.

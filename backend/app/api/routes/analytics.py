@@ -8,6 +8,7 @@ from fastapi import APIRouter
 from sqlalchemy import select
 
 from app.api.deps import Auth, DbSession, Providers
+from app.core.clock import iso_utc
 from app.domains.analytics.service import (
     dashboard,
     opportunity_breakdown,
@@ -123,10 +124,10 @@ def provider_health(providers: Providers, session: DbSession) -> list[dict[str, 
                 "avg_latency_ms": metrics.avg_latency_ms,
                 "p95_latency_ms": metrics.p95_latency_ms,
                 "rate_limit_per_second": provider.limiter.rate,
-                "last_success_at": metrics.last_success_at.isoformat()
+                "last_success_at": iso_utc(metrics.last_success_at)
                 if metrics.last_success_at
                 else None,
-                "last_failure_at": metrics.last_failure_at.isoformat()
+                "last_failure_at": iso_utc(metrics.last_failure_at)
                 if metrics.last_failure_at
                 else None,
                 "last_error": metrics.last_error,
@@ -152,7 +153,7 @@ def provider_requests(session: DbSession, limit: int = 100) -> list[dict[str, An
             "attempts": row.attempts,
             "error_code": row.error_code,
             "error_message": row.error_message,
-            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "created_at": iso_utc(row.created_at),
         }
         for row in rows
     ]

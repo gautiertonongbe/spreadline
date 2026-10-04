@@ -2,6 +2,7 @@
 SHELL := /bin/bash
 
 BACKEND := backend
+FRONTEND := frontend
 VENV := $(BACKEND)/.venv
 PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
@@ -63,8 +64,20 @@ format: ## Format the backend
 	cd $(BACKEND) && .venv/bin/ruff format app tests scripts migrations
 	cd $(BACKEND) && .venv/bin/ruff check --fix app tests scripts migrations
 
+.PHONY: providers
+providers: ## Call every configured provider for real and report what answered
+	cd $(BACKEND) && DATABASE_URL="$(LOCAL_DB)" .venv/bin/python -m scripts.check_providers
+
+.PHONY: e2e
+e2e: ## End-to-end browser tests against a running stack
+	cd $(FRONTEND) && set -a && . ../.env && set +a && npx playwright test
+
 .PHONY: check
 check: lint test ## Everything CI would run
+
+.PHONY: account
+account: ## Create a sign-in account (prompts for a password)
+	cd backend && .venv/bin/python -m scripts.create_user $(if $(EMAIL),--email $(EMAIL),)
 
 .PHONY: up
 up: ## Start the full stack in Docker

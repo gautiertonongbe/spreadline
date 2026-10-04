@@ -14,7 +14,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from app.core.clock import utcnow
+from app.core.clock import iso_utc, utcnow
 from app.domains.competition.service import CompetitionAssessment
 from app.domains.demand.service import DemandAssessment
 from app.domains.identity.matcher import MatchResult
@@ -82,6 +82,27 @@ class AnalysisContext:
     is_live_data: bool = False
     warnings: list[str] = field(default_factory=list)
 
+    def provenance(self) -> list[dict[str, Any]]:
+        """Where each price came from, and whether it is a market observation.
+
+        Carried on every analysis so that when real providers are connected the
+        reader can tell, per side, which adapter answered, when it last
+        answered, and whether it was a live call or fixture data. Today both
+        sides are fixtures and the block says so; nothing about the shape
+        changes when they are not, which is the point of publishing it now.
+        """
+        return [
+            {
+                "role": role,
+                "marketplace": side.marketplace.value,
+                "external_id": side.external_id,
+                "provider": side.provider,
+                "is_live_data": side.is_live_data,
+                "observed_at": iso_utc(side.observed_at),
+            }
+            for role, side in (("source", self.source), ("target", self.target))
+        ]
+
     def summary(self) -> dict[str, Any]:
         return {
             "product_id": self.product_id,
@@ -90,7 +111,7 @@ class AnalysisContext:
             "category": self.category,
             "direction": self.direction.value,
             "sourcing_channel": self.sourcing_channel.value,
-            "analyzed_at": self.analyzed_at.isoformat(),
+            "analyzed_at": iso_utc(self.analyzed_at),
             "is_live_data": self.is_live_data,
             "source": {
                 "marketplace": self.source.marketplace.value,
@@ -99,6 +120,8 @@ class AnalysisContext:
                 "availability": self.source.availability.value,
                 "quantity_available": self.source.quantity_available,
                 "url": self.source.url,
+                "provider": self.source.provider,
+                "is_live_data": self.source.is_live_data,
             },
             "target": {
                 "marketplace": self.target.marketplace.value,
@@ -107,6 +130,9 @@ class AnalysisContext:
                 "availability": self.target.availability.value,
                 "seller_count": self.target.seller_count,
                 "url": self.target.url,
+                "provider": self.target.provider,
+                "is_live_data": self.target.is_live_data,
             },
+            "provenance": self.provenance(),
             "warnings": self.warnings,
         }

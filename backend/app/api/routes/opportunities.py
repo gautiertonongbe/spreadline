@@ -10,6 +10,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import Auth, DbSession
+from app.core.clock import iso_utc
+from app.core.errors import ProviderError
+from app.core.money import money, pct_of
 from app.domains.opportunities import service as opportunities
 from app.domains.validation.service import (
     ValidationInput,
@@ -28,6 +31,7 @@ from app.schemas.opportunity import (
     ProductSummary,
     ValidationRequest,
 )
+from app.services.providers.registry import get_registry
 
 router = APIRouter(prefix="/opportunities", tags=["opportunities"])
 
@@ -73,11 +77,40 @@ def list_opportunities(
     )
 
 
-def _with_titles(session: Session, rows: list[Any]) -> list[OpportunitySummary]:
-    """Attach the product title to each row in one extra query.
+def _primary_blocker(explanation: dict[str, Any] | None) -> str | None:
+    """The one thing a reader should know about before anything else.
 
-    Fetched as a batch rather than per row: a 100-row opportunity table should
-    cost two queries, not a hundred and one.
+    Hard gates come before soft ones because a hard gate ends the discussion,
+    where a soft gate only explains why a profitable candidate is being held.
+
+    The requirement and the finding are both included. A gate label on its own
+    reads as a statement of fact rather than as the thing that failed: "No
+    serious warnings" next to a held candidate says the opposite of what
+    happened. Pairing it with the measurement fixes that without inventing a
+    second phrasing of every gate.
+    """
+    gates = (explanation or {}).get("gates") or []
+    failed = [
+        gate for gate in gates if isinstance(gate, dict) and not gate.get("passed", True)
+    ]
+    if not failed:
+        return None
+    failed.sort(key=lambda gate: not gate.get("hard", False))
+    label = str(failed[0].get("label") or "").strip()
+    detail = str(failed[0].get("detail") or "").strip()
+    if label and detail:
+        return f"{label.rstrip('.')}. {detail}"
+    return label or detail or None
+
+
+def _with_titles(session: Session, rows: list[Any]) -> list[OpportunitySummary]:
+    """Attach the product title and the decision line to each row.
+
+    Both extra reads are batched rather than issued per row: a 100-row table
+    should cost three queries, not two hundred and one. The list view exists to
+    answer "which of these should I act on", and it cannot answer that with
+    marketplace names and numbers alone, so the stored headline, the first
+    failed gate and the maximum acquisition cost travel with the row.
     """
     product_ids = {row.product_id for row in rows if row.product_id}
     products = (
@@ -90,6 +123,23 @@ def _with_titles(session: Session, rows: list[Any]) -> list[OpportunitySummary]:
         if product_ids
         else {}
     )
+
+    # The most recent base snapshot per opportunity. Ordered oldest first so the
+    # later row overwrites, leaving the newest without a per-row query.
+    snapshots: dict[str, ProfitabilitySnapshot] = {}
+    opportunity_ids = [row.id for row in rows]
+    if opportunity_ids:
+        for snapshot in session.scalars(
+            select(ProfitabilitySnapshot)
+            .where(
+                ProfitabilitySnapshot.opportunity_id.in_(opportunity_ids),
+                ProfitabilitySnapshot.scenario == "base",
+            )
+            .order_by(ProfitabilitySnapshot.created_at.asc())
+        ):
+            if snapshot.opportunity_id is not None:
+                snapshots[snapshot.opportunity_id] = snapshot
+
     items: list[OpportunitySummary] = []
     for row in rows:
         item = OpportunitySummary.model_validate(row)
@@ -97,8 +147,36 @@ def _with_titles(session: Session, rows: list[Any]) -> list[OpportunitySummary]:
         if product is not None:
             item.title = product.title
             item.brand = product.brand
+        explanation = row.explanation or {}
+        headline = explanation.get("headline")
+        item.headline = str(headline) if headline else None
+        item.primary_blocker = _primary_blocker(explanation)
+        _attach_economics(item, snapshots.get(row.id))
         items.append(item)
     return items
+
+
+def _attach_economics(item: OpportunitySummary, snapshot: ProfitabilitySnapshot | None) -> None:
+    """Carry the whole economic ladder onto a row.
+
+    Cost, gap, gap percent, fees, profit and the ceiling are one chain, and a
+    row that shows only its two ends asks the reader to take the middle on
+    trust. Read off the stored snapshot rather than recomputed, so the figures
+    on a row are the ones the decision was actually made from.
+    """
+    if snapshot is None:
+        return
+    item.total_cost = snapshot.total_cost
+    item.total_fees = snapshot.total_fees
+    item.other_unit_costs = money(
+        snapshot.inbound_shipping + snapshot.tax + snapshot.misc_cost
+    )
+    item.max_acquisition_cost = snapshot.max_acquisition_cost
+    landed = money(snapshot.acquisition_cost + snapshot.acquisition_shipping)
+    item.gross_spread = money(snapshot.sale_price - landed)
+    # None rather than zero when nothing was paid: an undefined percentage and a
+    # zero percentage lead to different decisions.
+    item.gross_spread_pct = pct_of(item.gross_spread, landed)
 
 
 @router.get("/summary")
@@ -122,23 +200,42 @@ def get_opportunity(opportunity_id: str, session: DbSession, auth: Auth) -> Oppo
         )
         .order_by(ProfitabilitySnapshot.created_at.desc())
     )
-    scenarios = list(
-        session.scalars(
-            select(ProfitabilitySnapshot)
-            .where(
-                ProfitabilitySnapshot.opportunity_id == opportunity.id,
-                ProfitabilitySnapshot.scenario != "base",
-            )
-            .order_by(ProfitabilitySnapshot.created_at.desc())
+    # The newest snapshot per scenario, not every snapshot ever written.
+    #
+    # Snapshots are append-only, and re-analysing a pair writes a fresh set.
+    # Rendering all of them showed the same six scenarios once per analysis, so a
+    # product analysed six times reported "36 scenarios" and listed each one six
+    # times over. Keyed on the scenario name rather than on a timestamp window
+    # because rows written in one flush can share a created_at to the microsecond.
+    scenarios: list[ProfitabilitySnapshot] = []
+    seen_scenarios: set[str] = set()
+    for snapshot in session.scalars(
+        select(ProfitabilitySnapshot)
+        .where(
+            ProfitabilitySnapshot.opportunity_id == opportunity.id,
+            ProfitabilitySnapshot.scenario != "base",
         )
-    )
+        .order_by(ProfitabilitySnapshot.created_at.desc(), ProfitabilitySnapshot.id.desc())
+    ):
+        if snapshot.scenario in seen_scenarios:
+            continue
+        seen_scenarios.add(snapshot.scenario)
+        scenarios.append(snapshot)
     risk = session.scalar(
         select(RiskAssessment)
         .where(RiskAssessment.opportunity_id == opportunity.id)
         .order_by(RiskAssessment.created_at.desc())
     )
 
-    from app.domains.opportunities.analysis import load_price_points
+    from app.domains.competition.service import assess_competition
+    from app.domains.demand.service import assess_demand
+    from app.domains.opportunities.analysis import (
+        load_competition_points,
+        load_demand_points,
+        load_offer_snapshots,
+        load_price_points,
+    )
+    from app.domains.pricing.spread_evidence import assess_spread
     from app.domains.pricing.statistics import analyze_prices
 
     # Built from the summary fields rather than validated straight off the ORM
@@ -166,6 +263,20 @@ def get_opportunity(opportunity_id: str, session: DbSession, auth: Auth) -> Oppo
             "score": str(risk.score),
             "summary": risk.summary,
             "signals": risk.signals,
+            "categories": risk.categories,
+            "unassessed_categories": [
+                item["category"]
+                for item in (risk.categories or [])
+                if not item.get("has_evidence", True)
+            ],
+            "driving_category": (
+                max(
+                    risk.signals,
+                    key=lambda signal: Decimal(str(signal.get("points", "0"))),
+                ).get("category")
+                if risk.signals
+                else None
+            ),
             "model_version": risk.model_version,
         }
         if risk
@@ -174,14 +285,69 @@ def get_opportunity(opportunity_id: str, session: DbSession, auth: Auth) -> Oppo
     detail.stress_test = {
         "scenarios": [_snapshot_payload(item) for item in scenarios],
     }
+    source_prices = analyze_prices(load_price_points(session, source.id)) if source else None
+    target_prices = analyze_prices(load_price_points(session, target.id)) if target else None
     detail.price_history = {
-        "source": analyze_prices(load_price_points(session, source.id)).as_dict()
-        if source
-        else None,
-        "target": analyze_prices(load_price_points(session, target.id)).as_dict()
-        if target
-        else None,
+        "source": source_prices.as_dict() if source_prices else None,
+        "target": target_prices.as_dict() if target_prices else None,
     }
+    # Recomputed from the observations stored since, rather than frozen at
+    # analysis time: whether a gap is a standing feature of two markets is a
+    # claim about history, and history keeps arriving.
+    if source_prices is not None and target_prices is not None and base_snapshot is not None:
+        landed = money(base_snapshot.acquisition_cost + base_snapshot.acquisition_shipping)
+        detail.spread_evidence = assess_spread(
+            current_spread=money(base_snapshot.sale_price - landed),
+            source_prices=source_prices,
+            target_prices=target_prices,
+        ).as_dict()
+    # Demand and competition are recomputed from the stored observations for the
+    # same reason the price history is: they are the evidence a BUY rests on,
+    # and a decision record that cannot show them cannot be audited.
+    if target is not None:
+        detail.demand = assess_demand(
+            load_demand_points(session, target.id),
+            current_rank=target.sales_rank,
+            current_review_count=target.review_count,
+        ).as_dict()
+        detail.competition = assess_competition(
+            load_competition_points(session, target.id),
+            load_offer_snapshots(session, target),
+        ).as_dict()
+
+    # The same provenance block a live analysis publishes, read off the stored
+    # listings. When real providers are connected this is where the reader sees
+    # which adapter answered and whether it was a market observation.
+    registry = get_registry()
+
+    def _is_live(slug: str | None) -> bool | None:
+        """Whether that provider calls a market, or None if it is not registered.
+
+        Resolved through the registry rather than guessed from the slug: what a
+        provider name means is the registry's to say, and a row written by a
+        provider that is no longer configured is reported as unknown rather
+        than as fixture data.
+        """
+        if not slug:
+            return None
+        try:
+            return registry.get(slug).is_live
+        except ProviderError:
+            return None
+
+    detail.provenance = [
+        {
+            "role": role,
+            "marketplace": listing.marketplace,
+            "external_id": listing.external_id,
+            "provider": listing.provider,
+            "is_live_data": _is_live(listing.provider),
+            "observed_at": iso_utc(listing.last_seen_at),
+        }
+        for role, listing in (("source", source), ("target", target))
+        if listing is not None
+    ]
+
     detail.events = [
         {
             "id": event.id,
@@ -191,14 +357,14 @@ def get_opportunity(opportunity_id: str, session: DbSession, auth: Auth) -> Oppo
             "actor": event.actor,
             "message": event.message,
             "payload": event.payload,
-            "created_at": event.created_at.isoformat() if event.created_at else None,
+            "created_at": iso_utc(event.created_at),
         }
         for event in opportunity.events
     ]
     detail.validations = [
         {
             "id": row.id,
-            "tested_at": row.tested_at.isoformat(),
+            "tested_at": iso_utc(row.tested_at),
             "tested_by": row.tested_by,
             "actual_source_price": str(row.actual_source_price)
             if row.actual_source_price is not None
@@ -242,10 +408,27 @@ def _match_payload(session: DbSession, opportunity: Any) -> dict[str, Any] | Non
 
 
 def _snapshot_payload(snapshot: ProfitabilitySnapshot | None) -> dict[str, Any] | None:
+    """Render a stored snapshot in the same shape a live analysis returns.
+
+    The derived terms are recomputed from the stored components rather than
+    left out. They are arithmetic over figures already in the row, so deriving
+    them here cannot disagree with the record, and omitting them made the
+    detail page show "not available" for a gap it had every number to compute.
+    """
     if snapshot is None:
         return None
+    landed = money(snapshot.acquisition_cost + snapshot.acquisition_shipping)
+    other = money(snapshot.inbound_shipping + snapshot.tax + snapshot.misc_cost)
+    gross_spread = money(snapshot.sale_price - landed)
     return {
         "scenario": snapshot.scenario,
+        "landed_acquisition_cost": str(landed),
+        "other_unit_costs": str(other),
+        "gross_spread": str(gross_spread),
+        "spread": str(gross_spread),
+        "gross_spread_pct": (
+            str(pct_of(gross_spread, landed)) if pct_of(gross_spread, landed) is not None else None
+        ),
         "sale_price": str(snapshot.sale_price),
         "acquisition_cost": str(snapshot.acquisition_cost),
         "acquisition_shipping": str(snapshot.acquisition_shipping),
@@ -312,7 +495,7 @@ def validate_opportunity(
     return {
         "id": validation.id,
         "opportunity_id": opportunity.id,
-        "tested_at": validation.tested_at.isoformat(),
+        "tested_at": iso_utc(validation.tested_at),
         "source_price_delta": str(validation.source_price_delta)
         if validation.source_price_delta is not None
         else None,

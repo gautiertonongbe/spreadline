@@ -68,6 +68,28 @@ class OpportunitySummary(APIModel):
     demand_confidence: str
     analyzed_at: datetime | None = None
     created_at: datetime
+    #: The decision engine's own sentence, denormalised for list views. A row in
+    #: a table of numbers does not say why it was called; this does, and it is
+    #: the stored explanation rather than a phrase reconstructed in the client.
+    headline: str | None = None
+    #: The first failed gate, hard gates first. "What is stopping this" is the
+    #: question a reviewer asks before any of the numbers.
+    primary_blocker: str | None = None
+    #: The most that can be paid per unit and still break even. For a buyer this
+    #: is the operative number: everything else is a consequence of it.
+    max_acquisition_cost: Decimal | None = None
+    #: The full economic ladder, denormalised so a row can show the whole chain
+    #: from what it costs to what is left, without opening the record.
+    gross_spread: Decimal | None = None
+    #: Gross spread against what was paid. Named against its denominator
+    #: because "spread %" and "margin" are different numbers that both read as
+    #: a percentage.
+    gross_spread_pct: Decimal | None = None
+    total_cost: Decimal | None = None
+    total_fees: Decimal | None = None
+    #: Inbound shipping, tax and operator-entered costs. Named so the row
+    #: reconciles: landed cost + other unit costs + fees = total cost.
+    other_unit_costs: Decimal | None = None
 
 
 class OpportunityDetail(OpportunitySummary):
@@ -87,6 +109,16 @@ class OpportunityDetail(OpportunitySummary):
     risk: dict[str, Any] | None = None
     stress_test: dict[str, Any] | None = None
     price_history: dict[str, Any] | None = None
+    #: Whether today's gap is a standing feature of these markets or a recent
+    #: move. Recomputed from the stored observations on every read, so it
+    #: reflects the history as it is now rather than as it was at analysis time.
+    spread_evidence: dict[str, Any] | None = None
+    #: Recomputed from stored observations, like the price history: a BUY
+    #: rests on these and the record has to be able to show them.
+    demand: dict[str, Any] | None = None
+    competition: dict[str, Any] | None = None
+    #: Which provider supplied each side, and whether it was a live call.
+    provenance: list[dict[str, Any]] = Field(default_factory=list)
     events: list[dict[str, Any]] = Field(default_factory=list)
     validations: list[dict[str, Any]] = Field(default_factory=list)
 

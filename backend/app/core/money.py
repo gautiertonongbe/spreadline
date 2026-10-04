@@ -92,6 +92,24 @@ def display(value: Decimal | int | float | str | None) -> str:
     return f"{cents(value):,.2f}"
 
 
+def display_currency(value: Decimal | int | float | str | None, currency: str = "USD") -> str:
+    """Format a money amount as a person reads it, with its symbol.
+
+    ``display`` deliberately leaves the currency off, because most of its uses
+    sit next to a column header or a label that already says what the number is.
+    Prose is different: "makes 71.65 per item" reads as a quantity of something
+    unnamed. Anything written as a sentence for a buyer goes through here.
+
+    The symbol table is small on purpose. An unknown currency gets its code
+    rather than a guessed symbol, because the wrong symbol is worse than none.
+    """
+    if value is None:
+        return "not available"
+    amount = display(value)
+    symbol = {"USD": "$", "GBP": "£", "EUR": "€"}.get(currency.upper())
+    return f"{symbol}{amount}" if symbol else f"{amount} {currency.upper()}"
+
+
 def display_score(value: Decimal | int | float | None) -> str:
     """Format a 0-100 score for display, without false precision."""
     if value is None:

@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono, Inter, Playfair_Display } from "next/font/google";
 
-import { DataSourceBanner } from "@/components/data-source-banner";
-import { Nav } from "@/components/nav";
+import { THEME_KEY } from "@/lib/theme";
 
 import "./globals.css";
 
@@ -41,45 +40,34 @@ export const metadata: Metadata = {
     "Cross-market inventory intelligence: where is the best use of inventory capital right now.",
 };
 
+/**
+ * Resolve the theme before the first paint.
+ *
+ * Stored choice wins, the operating system decides otherwise. This has to run
+ * synchronously in the document head: deferring it to React would paint one
+ * frame of the wrong theme on every page load, which is the single most visible
+ * defect a theme switcher can ship with.
+ */
+const THEME_SCRIPT = `(function(){try{var s=localStorage.getItem(${JSON.stringify(
+  THEME_KEY,
+)});var d=s==="dark"||(!s&&window.matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.dataset.theme=d?"dark":"light";}catch(e){document.documentElement.dataset.theme="light";}})();`;
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
+    // `data-theme` is deliberately absent from this markup and set only by the
+    // script below. Rendering it here would make React own the attribute, and
+    // hydration would reconcile the stored choice back to whatever the server
+    // rendered: the theme would flip back to light on every page load.
+    // `suppressHydrationWarning` is what lets the script own it.
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${playfair.variable} ${inter.variable} ${plexMono.variable}`}
     >
-      <body className="min-h-screen">
-        <div className="flex min-h-screen">
-          <aside className="hidden w-60 shrink-0 border-r border-border bg-surface lg:flex lg:flex-col">
-            <div className="border-b border-hairline px-6 py-6">
-              <a href="/" className="block">
-                <div className="font-display text-[1.375rem] font-medium leading-none tracking-tight text-primary">
-                  Spreadline
-                </div>
-                <div className="mt-2 text-3xs uppercase tracking-label text-faint">
-                  Inventory Intelligence
-                </div>
-              </a>
-            </div>
-            <Nav />
-            <div className="mt-auto border-t border-hairline px-6 py-5">
-              <DataSourceBanner variant="sidebar" />
-            </div>
-          </aside>
-
-          <div className="flex min-w-0 flex-1 flex-col">
-            <header className="flex items-center justify-between gap-4 border-b border-border bg-surface px-6 py-3 lg:hidden">
-              <a href="/" className="font-display text-lg font-medium tracking-tight">
-                Spreadline
-              </a>
-              <DataSourceBanner variant="compact" />
-            </header>
-            <div className="border-b border-hairline lg:hidden">
-              <Nav orientation="horizontal" />
-            </div>
-            <main className="min-w-0 flex-1 px-6 py-7 lg:px-9 lg:py-9">{children}</main>
-          </div>
-        </div>
-      </body>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
+      <body className="min-h-screen">{children}</body>
     </html>
   );
 }

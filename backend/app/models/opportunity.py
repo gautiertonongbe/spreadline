@@ -183,6 +183,13 @@ class RiskAssessment(Base, UUIDPrimaryKeyMixin, OrganizationScopedMixin, Timesta
     #: Each signal keeps its code, severity, weight, message and evidence, so a
     #: level always explains itself (spec §15).
     signals: Mapped[list[dict[str, Any]]] = mapped_column(JSONB(), nullable=False, default=list)
+    #: The per-category breakdown as assessed at the time, including the clean
+    #: categories and the ones there was no evidence for. Stored rather than
+    #: recomputed on read because "we could not assess demand" is a fact about
+    #: what was known then, and later observations must not silently rewrite it.
+    categories: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB(), nullable=False, default=list
+    )
     summary: Mapped[str | None] = mapped_column(String(1000))
     model_version: Mapped[str] = mapped_column(String(32), nullable=False, default="risk-v1")
 

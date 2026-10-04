@@ -14,6 +14,7 @@ the history tables. Two rules shape the code:
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
@@ -38,6 +39,7 @@ from app.services.providers.base import (
     RawOffer,
     RawPricePoint,
 )
+from app.services.providers.registry import get_registry
 
 
 def get_listing(
@@ -209,6 +211,82 @@ def _existing_observation_keys(
     }
 
 
+@dataclass(frozen=True)
+class ObservationStamp:
+    """Identity and provenance attached to every observation at capture time.
+
+    Resolved once per batch rather than per row: the identifier lookup is a
+    query, and a history backfill can write hundreds of rows from one call.
+    """
+
+    external_id: str | None
+    gtin: str | None
+    asin: str | None
+    is_simulated: bool
+    retrieved_at: datetime
+    quality_score: Decimal | None = None
+
+    def as_columns(self) -> dict[str, Any]:
+        return {
+            "external_id": self.external_id,
+            "gtin": self.gtin,
+            "asin": self.asin,
+            "is_simulated": self.is_simulated,
+            "retrieved_at": self.retrieved_at,
+            "quality_score": self.quality_score,
+        }
+
+
+def observation_stamp(
+    session: Session,
+    listing: MarketplaceListing,
+    *,
+    provider: str,
+    is_simulated: bool | None = None,
+    quality_score: Decimal | None = None,
+    retrieved_at: datetime | None = None,
+) -> ObservationStamp:
+    """Build the stamp for one listing.
+
+    ``is_simulated`` is resolved through the provider registry when not given,
+    because what a provider slug means is the registry's to say. A provider that
+    is not registered is treated as simulated: assuming an unknown source was a
+    real market observation is the error that would quietly contaminate the
+    dataset, and the opposite error only understates it.
+    """
+    gtin: str | None = None
+    asin: str | None = None
+    if listing.product_id:
+        for row in session.scalars(
+            select(ProductIdentifier).where(ProductIdentifier.product_id == listing.product_id)
+        ):
+            value = row.normalized_value or row.value
+            if row.identifier_type == IdentifierType.ASIN.value and asin is None:
+                asin = value
+            elif (
+                row.identifier_type
+                in {IdentifierType.GTIN.value, IdentifierType.UPC.value, IdentifierType.EAN.value}
+                and gtin is None
+                and row.is_valid
+            ):
+                gtin = value
+
+    if is_simulated is None:
+        try:
+            is_simulated = not get_registry().get(provider).is_live
+        except Exception:  # noqa: BLE001 - an unknown provider is not a live market
+            is_simulated = True
+
+    return ObservationStamp(
+        external_id=listing.external_id,
+        gtin=gtin,
+        asin=asin,
+        is_simulated=is_simulated,
+        retrieved_at=retrieved_at or utcnow(),
+        quality_score=quality_score,
+    )
+
+
 def record_price_observations(
     session: Session,
     organization_id: str,
@@ -217,10 +295,14 @@ def record_price_observations(
     *,
     provider: str,
     source: str = "poll",
+    stamp: ObservationStamp | None = None,
 ) -> int:
     """Append price observations, skipping ones already stored."""
     if not points:
         return 0
+    columns = (
+        stamp or observation_stamp(session, listing, provider=provider)
+    ).as_columns()
     seen = _existing_observation_keys(session, PriceObservation, listing.id, source)
     added = 0
     for point in points:
@@ -230,6 +312,7 @@ def record_price_observations(
             continue
         session.add(
             PriceObservation(
+                **columns,
                 organization_id=organization_id,
                 product_id=listing.product_id,
                 listing_id=listing.id,
@@ -262,9 +345,13 @@ def record_demand_observations(
     *,
     provider: str,
     source: str = "poll",
+    stamp: ObservationStamp | None = None,
 ) -> int:
     if not points:
         return 0
+    columns = (
+        stamp or observation_stamp(session, listing, provider=provider)
+    ).as_columns()
     seen = _existing_observation_keys(session, DemandObservation, listing.id, source)
     added = 0
     for point in points:
@@ -274,6 +361,7 @@ def record_demand_observations(
             continue
         session.add(
             DemandObservation(
+                **columns,
                 organization_id=organization_id,
                 product_id=listing.product_id,
                 listing_id=listing.id,
@@ -304,9 +392,13 @@ def record_competition_observations(
     *,
     provider: str,
     source: str = "poll",
+    stamp: ObservationStamp | None = None,
 ) -> int:
     if not points:
         return 0
+    columns = (
+        stamp or observation_stamp(session, listing, provider=provider)
+    ).as_columns()
     seen = _existing_observation_keys(session, CompetitionObservation, listing.id, source)
     added = 0
     for point in points:
@@ -316,6 +408,7 @@ def record_competition_observations(
             continue
         session.add(
             CompetitionObservation(
+                **columns,
                 organization_id=organization_id,
                 product_id=listing.product_id,
                 listing_id=listing.id,
@@ -392,6 +485,8 @@ def snapshot_current_price(
     listing: MarketplaceListing,
     *,
     provider: str,
+    stamp: ObservationStamp | None = None,
+    source: str = "poll",
 ) -> int:
     """Record the listing's current price as an observation."""
     if listing.current_price is None:
@@ -410,7 +505,8 @@ def snapshot_current_price(
             )
         ],
         provider=provider,
-        source="poll",
+        source=source,
+        stamp=stamp,
     )
 
 

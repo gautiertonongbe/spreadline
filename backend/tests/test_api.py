@@ -8,6 +8,7 @@ tests cannot see.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 API = "/api/v1"
@@ -168,6 +169,97 @@ class TestOpportunities:
 
         filtered = client.get(f"{API}/opportunities", params={"min_score": 60}).json()
         assert all(Decimal(item["score"]) >= 60 for item in filtered["items"])
+
+    def test_every_timestamp_states_its_timezone(self, client):
+        """A timestamp without an offset is read as local time by the browser.
+
+        Every datetime Spreadline writes is UTC, but SQLite returns the column
+        naive, and serialising that produced "2026-09-12T21:05:45" with nothing
+        saying which zone it was. West of UTC the browser placed it hours in the
+        future, and an analysis four minutes old rendered as "in 24,515
+        seconds".
+        """
+        opportunity_id = analyze(client)["opportunity_id"]
+        detail = client.get(f"{API}/opportunities/{opportunity_id}").json()
+        listed = client.get(f"{API}/opportunities").json()["items"][0]
+
+        stamps: list[tuple[str, str]] = [
+            ("detail.analyzed_at", detail["analyzed_at"]),
+            ("detail.created_at", detail["created_at"]),
+            ("summary.analyzed_at", listed["analyzed_at"]),
+            ("summary.created_at", listed["created_at"]),
+        ]
+        stamps += [
+            (f"event[{index}].created_at", event["created_at"])
+            for index, event in enumerate(detail["events"])
+        ]
+        for side in ("source", "target"):
+            history = detail["price_history"][side]
+            for key, window in (history or {}).get("windows", {}).items():
+                for field in ("first_observed_at", "last_observed_at"):
+                    if window.get(field):
+                        stamps.append((f"{side}.window[{key}].{field}", window[field]))
+
+        assert len(stamps) > 4, "the payload should carry more than the base timestamps"
+        for label, raw in stamps:
+            assert raw, f"{label} is empty"
+            parsed = datetime.fromisoformat(raw)
+            assert parsed.tzinfo is not None, f"{label} has no timezone: {raw!r}"
+            # And it must not be in the future: that is the symptom the missing
+            # offset produced, and the assertion that would have caught it.
+            assert parsed <= datetime.now(UTC) + timedelta(seconds=5), f"{label} is ahead: {raw!r}"
+
+    def test_reanalysis_does_not_multiply_the_stress_scenarios(self, client):
+        """Snapshots are append-only; the detail view is not.
+
+        Re-analysing a pair writes a fresh set of scenario snapshots. Rendering
+        every one of them listed the same six scenarios once per analysis, so a
+        product looked at six times reported thirty-six of them.
+        """
+        first = analyze(client)["opportunity_id"]
+        scenarios = client.get(f"{API}/opportunities/{first}").json()["stress_test"][
+            "scenarios"
+        ]
+        assert scenarios
+
+        second = analyze(client)["opportunity_id"]
+        assert second == first, "the same pair is the same opportunity"
+
+        after = client.get(f"{API}/opportunities/{first}").json()["stress_test"]["scenarios"]
+        assert len(after) == len(scenarios)
+        names = [row["scenario"] for row in after]
+        assert len(names) == len(set(names)), "each scenario appears once"
+
+    def test_a_row_carries_the_decision_not_only_the_numbers(self, client):
+        """The list view has to answer "which of these should I act on".
+
+        A table of marketplaces and figures cannot answer that, so the stored
+        headline, the first failed gate and the acquisition ceiling travel with
+        every row. Losing any of them silently turns the decision list back into
+        a spreadsheet.
+        """
+        analyze(client)
+        analyze(
+            client,
+            source={"marketplace": "walmart", "external_id": "WM-220884411"},
+            target={"marketplace": "amazon", "external_id": "B078JXWDVX"},
+        )
+        items = client.get(f"{API}/opportunities").json()["items"]
+        assert items
+
+        for item in items:
+            assert item["headline"], "every row states why it was called"
+            # The ceiling is what a buyer acts on, and it is a real decimal
+            # string rather than a number, like every other money field.
+            assert isinstance(item["max_acquisition_cost"], str)
+            assert Decimal(item["max_acquisition_cost"])
+
+        held = [item for item in items if item["recommendation"] != "buy"]
+        assert held, "the fixture pair includes at least one candidate held back"
+        assert all(item["primary_blocker"] for item in held)
+
+        cleared = [item for item in items if item["recommendation"] == "buy"]
+        assert all(item["primary_blocker"] is None for item in cleared)
 
     def test_sorting(self, client):
         analyze(client)

@@ -18,11 +18,28 @@ const SECTIONS: { label: string; items: { href: string; label: string }[] }[] = 
     items: [
       { href: "/bulk", label: "Bulk analysis" },
       { href: "/capital", label: "Capital" },
+      { href: "/execution", label: "Buy and record" },
+    ],
+  },
+  {
+    label: "Autonomy",
+    items: [
+      { href: "/autonomy", label: "Overview" },
+      { href: "/autonomy/allocation", label: "What to buy" },
+      { href: "/autonomy/positions", label: "Positions" },
+      { href: "/autonomy/sell", label: "What to sell" },
+      { href: "/autonomy/decisions", label: "Decisions" },
+      { href: "/autonomy/backtest", label: "Replay a policy" },
+      { href: "/autonomy/learning", label: "What it gets wrong" },
+      { href: "/autonomy/events", label: "Audit log" },
     ],
   },
   {
     label: "System",
-    items: [{ href: "/providers", label: "Providers" }],
+    items: [
+      { href: "/history", label: "Observation history" },
+      { href: "/providers", label: "Providers" },
+    ],
   },
 ];
 
@@ -35,7 +52,7 @@ export function Nav({ orientation = "vertical" }: { orientation?: "vertical" | "
   if (orientation === "horizontal") {
     return (
       <nav className="flex gap-1 overflow-x-auto px-4 py-2">
-        {SECTIONS.flatMap((section) => section.items).map((item) => (
+        {SECTIONS.flatMap((section) => section.items.slice(0, section.label === "Autonomy" ? 1 : section.items.length)).map((item) => (
           <Link
             key={item.href}
             href={item.href}

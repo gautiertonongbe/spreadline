@@ -142,9 +142,18 @@ def unify_products(
     survivor.primary_gtin = survivor.primary_gtin or absorbed.primary_gtin
     survivor.pack_count = survivor.pack_count or absorbed.pack_count
 
+    # ``synchronize_session`` is not optional here, and leaving it at the default
+    # was a real defect. These are Core-level bulk updates: they change the rows
+    # in the database and, without being told to, leave any instance already
+    # loaded in this session holding the old product id. The next flush then
+    # writes that stale id straight back, and the ``session.delete(absorbed)``
+    # below cascades and takes the row with it. A listing created earlier in the
+    # same transaction is exactly such an instance, so the failure only appears
+    # when something is written and then merged before the transaction commits.
     for model in (PriceObservation, DemandObservation, CompetitionObservation):
         session.execute(
-            update(model).where(model.product_id == absorbed.id).values(product_id=survivor.id)
+            update(model).where(model.product_id == absorbed.id).values(product_id=survivor.id),
+            execution_options={"synchronize_session": "fetch"},
         )
     # Identifiers are unique per (product, type, value): drop the absorbed rows
     # that the survivor already carries before repointing the rest.
@@ -165,9 +174,27 @@ def unify_products(
     session.execute(
         update(MarketplaceListing)
         .where(MarketplaceListing.product_id == absorbed.id)
-        .values(product_id=survivor.id)
+        .values(product_id=survivor.id),
+        execution_options={"synchronize_session": "fetch"},
     )
     session.flush()
+
+    # Expiring the absorbed product before deleting it is what stops the delete
+    # taking the rows that were just moved off it.
+    #
+    # ``Product.listings`` and ``Product.identifiers`` are delete-orphan
+    # relationships loaded eagerly, so ``absorbed`` is holding a collection of
+    # children that was populated before the bulk UPDATE above ran. That UPDATE
+    # is Core-level: it repoints the rows in the database and knows nothing about
+    # the collection, which still contains them. ``session.delete`` then cascades
+    # through that stale collection and deletes children that no longer belong to
+    # this product at all. Expiring forces the cascade to re-read, and it finds
+    # nothing to take.
+    #
+    # This only bites when a child was written earlier in the same transaction
+    # and is therefore live in the session, which is why it stayed hidden until
+    # something created a listing and merged it before committing.
+    session.expire(absorbed)
     session.delete(absorbed)
     session.flush()
     return survivor

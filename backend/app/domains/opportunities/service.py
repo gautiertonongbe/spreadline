@@ -253,6 +253,7 @@ def _store_risk(
             level=result.risk.level.value,
             score=result.risk.score,
             signals=[signal.as_dict() for signal in result.risk.signals],
+            categories=[item.as_dict() for item in result.risk.categories],
             summary=result.risk.summary,
             model_version=result.risk.model_version,
         )

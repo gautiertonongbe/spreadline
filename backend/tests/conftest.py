@@ -27,8 +27,13 @@ os.environ["ENABLED_PROVIDERS"] = "mock"
 os.environ["SCHEDULER_ENABLED"] = "false"
 os.environ["LOG_LEVEL"] = "WARNING"
 os.environ["PROVIDER_RATE_LIMIT_PER_SECOND"] = "1000"
+# The test client speaks plain HTTP, and a Secure cookie is never sent over it.
+# Left at the production default this produces a login that returns 200 and a
+# client that is not signed in, which is exactly the failure a real plain-HTTP
+# deployment would see.
+os.environ["SECURE_COOKIES"] = "false"
 
-from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy import create_engine, event  # noqa: E402
 from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
 
 from app.core.security import AuthContext  # noqa: E402
@@ -49,6 +54,19 @@ def engine(db_path: Path):  # type: ignore[no-untyped-def]
     engine = create_engine(
         f"sqlite+pysqlite:///{db_path}", connect_args={"check_same_thread": False}
     )
+
+    # The same pragma the application engine sets. This fixture builds its own
+    # engine rather than reusing that one, and for a long time it did so without
+    # this listener, so every test ran with foreign keys unenforced while
+    # production enforced them. The suite could then pass on rows the real
+    # database would reject, which is the one difference between a test engine
+    # and a production engine that must never exist.
+    @event.listens_for(engine, "connect")
+    def _sqlite_pragmas(dbapi_connection, _record):  # type: ignore[no-untyped-def]
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
     Base.metadata.create_all(engine)
     yield engine
     engine.dispose()
@@ -60,6 +78,13 @@ def session(engine) -> Iterator[Session]:  # type: ignore[no-untyped-def]
     session = factory()
     yield session
     session.close()
+
+
+#: The account every API test signs in as. A real password through the real
+#: login route: a fixture that forged a session would test a path no browser
+#: ever takes.
+TEST_EMAIL = "operator@spreadline.test"
+TEST_PASSWORD = "correct-horse-battery"
 
 
 @pytest.fixture
@@ -105,8 +130,46 @@ def client(engine, monkeypatch):  # type: ignore[no-untyped-def]
 
     monkeypatch.setattr(database_module, "SessionLocal", factory)
 
+    # The API requires a session, so the fixture creates an account and signs in
+    # the way a browser does. Every test below therefore exercises the real
+    # authentication path rather than a bypass, and a test that needs to see an
+    # unauthenticated response clears the cookies itself.
+    from app.domains.tenancy.auth import create_user
+    from app.domains.tenancy.service import ensure_default_organization
+
+    bootstrap_session = factory()
+    try:
+        organization = ensure_default_organization(bootstrap_session)
+        create_user(
+            bootstrap_session,
+            organization,
+            email=TEST_EMAIL,
+            password=TEST_PASSWORD,
+            full_name="Test Operator",
+            role="owner",
+        )
+        bootstrap_session.commit()
+    finally:
+        bootstrap_session.close()
+
     app = create_app()
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as test_client:
+        response = test_client.post(
+            "/api/v1/auth/login",
+            json={"email": TEST_EMAIL, "password": TEST_PASSWORD},
+        )
+        assert response.status_code == 200, response.text
         yield test_client
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def anonymous_client(client):  # type: ignore[no-untyped-def]
+    """The same client with its session thrown away.
+
+    For asserting what an unauthenticated caller sees, which is the assertion
+    that matters most and the one a signed-in fixture would hide.
+    """
+    client.cookies.clear()
+    return client

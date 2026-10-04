@@ -59,6 +59,8 @@ class PlatformRole(StrEnum):
 
 @dataclass(frozen=True)
 class PlatformDefinition:
+    """One data source, described completely enough to decide whether to connect it."""
+
     slug: str
     display_name: str
     role: PlatformRole
@@ -67,7 +69,8 @@ class PlatformDefinition:
     marketplace: Marketplace | None
     #: What it could answer once connected.
     capabilities: tuple[ProviderCapability, ...]
-    #: Environment variables that must be set.
+    #: Environment variables that must be set. Empty only for a source that
+    #: genuinely needs no authentication, such as an open dataset.
     credentials: tuple[str, ...]
     #: Where to get them.
     signup_url: str
@@ -161,7 +164,8 @@ ALL = (
         docs_url="https://developer-docs.amazon.com/sp-api/",
         caveats=(
             "SP-API requires a Professional seller account and developer app registration.",
-            "PA-API is the alternative and requires an Associates account with qualifying sales.",
+            "PA-API v5 is retired and now returns HTTP 403; see the amazon_creators "
+            "entry for the replacement.",
         ),
     ),
     PlatformDefinition(
@@ -260,6 +264,60 @@ ALL = (
         cost="Per request",
         requires_seller_account=False,
         notes="No public product API; routes through a licensed aggregator.",
+    ),
+    PlatformDefinition(
+        slug="amazon_creators",
+        display_name="Amazon Creators API",
+        role=PlatformRole.EXIT,
+        status=PlatformStatus.PLANNED,
+        marketplace=Marketplace.AMAZON,
+        capabilities=(
+            ProviderCapability.SEARCH,
+            ProviderCapability.PRODUCT,
+            ProviderCapability.PRICE,
+        ),
+        credentials=("AMAZON_CREATORS_CLIENT_ID", "AMAZON_CREATORS_CLIENT_SECRET"),
+        signup_url="https://affiliate-program.amazon.com/creatorsapi/docs/en-us/introduction",
+        cost="Free, but gated on affiliate sales",
+        requires_seller_account=False,
+        notes=(
+            "The replacement for the retired Product Advertising API, and the only "
+            "route to Amazon catalogue data that does not need a seller account. "
+            "Offers SearchItems, GetItems, GetVariations and GetBrowseNodes, which "
+            "covers product identity and price."
+        ),
+        docs_url="https://affiliate-program.amazon.com/creatorsapi/docs/en-us/introduction",
+        caveats=(
+            "Requires an Amazon Associates account with at least 10 qualifying sales "
+            "in the trailing 30 days. The window is rolling, so access can lapse.",
+            "Verified against Amazon's documentation in September 2026; the threshold "
+            "has already moved once, from 3 sales under PA-API to 10 here.",
+        ),
+    ),
+    PlatformDefinition(
+        slug="amazon_reviews_2023",
+        display_name="Amazon Reviews 2023 (open dataset)",
+        role=PlatformRole.DATA,
+        status=PlatformStatus.PLANNED,
+        marketplace=None,
+        capabilities=(ProviderCapability.PRODUCT, ProviderCapability.PRICE),
+        credentials=(),
+        signup_url="https://amazon-reviews-2023.github.io/",
+        cost="Free, open academic dataset",
+        requires_seller_account=False,
+        notes=(
+            "571 million reviews across 33 categories with item metadata: parent ASIN, "
+            "title, store, categories, price at crawl time, rating and details. The only "
+            "genuinely open Amazon product data, and the practical way to populate a "
+            "realistic catalogue or backtest without paying anyone. Imported through "
+            "scripts/import_amazon_dataset.py rather than as a provider."
+        ),
+        docs_url="https://amazon-reviews-2023.github.io/main.html",
+        caveats=(
+            "Historical, not live: prices are as at the 2023 crawl and are stored with "
+            "that date so the freshness and data-quality logic marks them stale.",
+            "No UPC or EAN, so identity rests on ASIN and title rather than on a GTIN.",
+        ),
     ),
     # ---------------------------------------------------- planned: data feeds
     PlatformDefinition(

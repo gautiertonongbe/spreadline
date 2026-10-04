@@ -20,8 +20,8 @@ import { Button } from "@/components/ui";
 
 const RECOMMENDATIONS = [
   { value: "buy", label: "Buy" },
-  { value: "review", label: "Review" },
-  { value: "pass", label: "Pass" },
+  { value: "review", label: "Check" },
+  { value: "pass", label: "Skip" },
 ];
 
 const RISK_LEVELS = [
@@ -50,8 +50,8 @@ const MARKETPLACES = [
 
 const SORTS = [
   { value: "score", label: "Score" },
-  { value: "profit", label: "Profit" },
-  { value: "roi", label: "ROI" },
+  { value: "profit", label: "You make" },
+  { value: "roi", label: "Return" },
   { value: "risk", label: "Risk" },
   { value: "analyzed_at", label: "Analysed" },
 ];
@@ -60,22 +60,22 @@ const SORTS = [
 const PRESETS: { label: string; hint: string; params: Record<string, string | string[]> }[] = [
   {
     label: "Actionable",
-    hint: "Buy calls at low or medium risk",
+    hint: "Worth buying, without much risk",
     params: { recommendation: ["buy"], risk_level: ["low", "medium"], sort: "score" },
   },
   {
     label: "Needs a look",
-    hint: "Held for review, best score first",
+    hint: "Worth checking first, best score first",
     params: { recommendation: ["review"], sort: "score" },
   },
   {
-    label: "Best margin",
-    hint: "At least 30% ROI, ranked by ROI",
+    label: "Best return",
+    hint: "Gives back at least 30% on your money",
     params: { min_roi: "0.30", sort: "roi" },
   },
   {
-    label: "Large positions",
-    hint: "At least 20 profit per unit",
+    label: "Biggest profit",
+    hint: "Makes at least 20 on each item",
     params: { min_profit: "20", sort: "profit" },
   },
 ];
@@ -159,8 +159,18 @@ export function OpportunityFilters({ total }: { total: number }) {
     });
   };
 
-  const applyPreset = (preset: (typeof PRESETS)[number]) => {
+  // A preset replaces the filters, not the reader's chosen layout. Dropping
+  // `view` here would silently throw a reviewer back to the full table every
+  // time they clicked a preset.
+  const preserved = () => {
     const query = new URLSearchParams();
+    const view = params.get("view");
+    if (view) query.set("view", view);
+    return query;
+  };
+
+  const applyPreset = (preset: (typeof PRESETS)[number]) => {
+    const query = preserved();
     for (const [key, value] of Object.entries(preset.params)) {
       if (Array.isArray(value)) value.forEach((item) => query.append(key, item));
       else query.set(key, value);
@@ -168,7 +178,10 @@ export function OpportunityFilters({ total }: { total: number }) {
     router.push(`/opportunities?${query.toString()}`);
   };
 
-  const clearAll = () => router.push("/opportunities");
+  const clearAll = () => {
+    const query = preserved().toString();
+    router.push(query ? `/opportunities?${query}` : "/opportunities");
+  };
 
   const active = countActive(state);
 

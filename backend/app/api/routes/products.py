@@ -8,7 +8,9 @@ from fastapi import APIRouter, Query
 from sqlalchemy import select
 
 from app.api.deps import Auth, DbSession, Providers
+from app.core.clock import iso_utc
 from app.core.errors import NotFoundError
+from app.domains.opportunities import manual, paste
 from app.domains.opportunities.analysis import (
     AnalysisOptions,
     analyze_both_directions,
@@ -21,6 +23,9 @@ from app.models.enums import Marketplace
 from app.schemas.analysis import (
     AnalyzeBothRequest,
     AnalyzeRequest,
+    ManualAnalyzeRequest,
+    ManualSideRequest,
+    PasteRequest,
     SearchRequest,
     SearchResponse,
     SearchResultItem,
@@ -88,6 +93,103 @@ async def analyze(
     if payload.persist:
         session.commit()
     return result.as_dict()
+
+
+def _manual_side(payload: ManualSideRequest) -> manual.ManualSide:
+    """The request shape mapped onto the domain's own."""
+    return manual.ManualSide(
+        marketplace=payload.marketplace,
+        external_id=payload.external_id,
+        title=payload.title,
+        price=payload.price,
+        url=payload.url,
+        brand=payload.brand,
+        model=payload.model,
+        category=payload.category,
+        shipping=payload.shipping,
+        condition=payload.condition,
+        availability=payload.availability,
+        identifiers=payload.identifiers,
+        sales_rank=payload.sales_rank,
+        rank_category=payload.rank_category,
+        seller_count=payload.seller_count,
+        offer_count=payload.offer_count,
+        review_count=payload.review_count,
+        rating=payload.rating,
+        quantity_available=payload.quantity_available,
+        note=payload.note,
+    )
+
+
+@router.post("/analyze/paste")
+def read_paste(payload: PasteRequest, auth: Auth) -> dict[str, Any]:
+    """Read a pasted product page into a draft for a person to confirm.
+
+    Nothing is fetched, nothing is written and nothing is analysed. Copying text
+    off a page you are looking at is not automated access, and what comes back
+    here is a proposal: every field carries the line it was read from and how
+    sure the parser is, and the person confirms it before any of it counts.
+
+    The pasted text is not stored. A signed-in product page carries the reader's
+    name, their delivery address, their cart and their customer id threaded
+    through every link on it, and none of that is the platform's business.
+    """
+    del auth  # required for the session check, not used to scope anything
+    return paste.parse(payload.text, marketplace=payload.marketplace).as_dict()
+
+
+@router.post("/analyze/manual")
+async def analyze_manual(
+    payload: ManualAnalyzeRequest, session: DbSession, auth: Auth
+) -> dict[str, Any]:
+    """Analyse a pair somebody looked up by hand.
+
+    The path that needs no credential and no queue. A person opens the two
+    product pages, reads the prices and types them in; nothing here fetches
+    anything, so there is no robot, no terms of service to breach and no account
+    to put at risk. A human reading a public page is not scraping, and the
+    resulting observation is recorded as real rather than simulated, because
+    nothing about it is invented.
+
+    The listings are written through the same choke point a provider answer goes
+    through and the analysis then runs offline, so identity, profitability,
+    scoring, risk and the decision are the same code on the same data. A
+    hand-entered pair is judged by exactly the standard an API-fed one is, which
+    includes being refused when the evidence is thin.
+    """
+    source = _manual_side(payload.source)
+    target = _manual_side(payload.target)
+    recorded = manual.record_pair(session, auth, source=source, target=target)
+
+    result = await analyze_pair(
+        session,
+        auth,
+        source_marketplace=source.marketplace,
+        source_external_id=source.external_id,
+        target_marketplace=target.marketplace,
+        target_external_id=target.external_id,
+        options=AnalysisOptions(
+            sourcing_channel=payload.sourcing_channel,
+            fee_overrides=payload.fee_overrides,
+            run_stress_test=payload.run_stress_test,
+            persist=payload.persist,
+            # Nothing to call. The pair was just written by hand and the
+            # pipeline reads it from the catalogue.
+            offline=True,
+        ),
+    )
+    if payload.persist:
+        session.commit()
+
+    body = result.as_dict()
+    body["entry"] = {
+        "method": "manual",
+        "shared_identifiers": recorded["shared_identifiers"],
+        #: What this pair cannot answer, said before the verdict rather than
+        #: discovered inside a refusal.
+        "gaps": recorded["warnings"],
+    }
+    return body
 
 
 @router.post("/analyze/both-directions")
@@ -180,7 +282,7 @@ def get_product_history(product_id: str, session: DbSession, auth: Auth) -> dict
                 "external_id": listing.external_id,
                 "statistics": analysis.as_dict(),
                 "observations": [
-                    {"price": str(point.price), "observed_at": point.observed_at.isoformat()}
+                    {"price": str(point.price), "observed_at": iso_utc(point.observed_at)}
                     for point in points[-365:]
                 ],
             }

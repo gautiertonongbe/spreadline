@@ -21,7 +21,13 @@ from app.models.enums import Availability, Condition, Marketplace
 from app.services.providers import bestbuy, ebay
 from app.services.providers.base import ProviderCapability
 from app.services.providers.planned import PlannedProvider
-from app.services.providers.platforms import ALL, BY_SLUG, PlatformStatus, connectable_now
+from app.services.providers.platforms import (
+    ALL,
+    BY_SLUG,
+    PlatformRole,
+    PlatformStatus,
+    connectable_now,
+)
 
 
 def stub_client(handler) -> httpx.AsyncClient:
@@ -364,10 +370,20 @@ class TestPlatformCatalogue:
     def test_every_definition_is_complete(self):
         for definition in ALL:
             assert definition.slug and definition.display_name
-            assert definition.credentials, f"{definition.slug} states no credential"
             assert definition.signup_url, f"{definition.slug} states no signup URL"
             assert definition.cost, f"{definition.slug} states no cost"
             assert definition.notes, f"{definition.slug} has no explanation"
+
+    def test_every_platform_states_its_credential_or_needs_none(self):
+        """An empty credential list is allowed only where authentication genuinely
+        is not required, which today means the open dataset."""
+        for definition in ALL:
+            if definition.credentials:
+                continue
+            assert definition.role is PlatformRole.DATA, (
+                f"{definition.slug} states no credential but is not an open data source"
+            )
+            assert "open" in definition.cost.lower() or "free" in definition.cost.lower()
 
     def test_slugs_are_unique(self):
         slugs = [definition.slug for definition in ALL]
@@ -377,6 +393,28 @@ class TestPlatformCatalogue:
         """The whole point of Best Buy plus eBay: real data, no seller account."""
         free = {definition.slug for definition in connectable_now()}
         assert {"bestbuy", "ebay"} <= free
+
+    def test_the_retired_pa_api_is_not_offered_as_a_route(self):
+        """PA-API v5 was retired in May 2026 and now returns 403. Pointing an
+        operator at it would send them to sign up for something that is gone."""
+        for definition in ALL:
+            haystack = " ".join((definition.notes, *definition.caveats)).lower()
+            if "pa-api" in haystack:
+                assert "retired" in haystack, (
+                    f"{definition.slug} mentions PA-API without saying it is retired"
+                )
+
+    def test_the_amazon_route_without_a_seller_account_is_named(self):
+        creators = BY_SLUG["amazon_creators"]
+        assert creators.requires_seller_account is False
+        assert "10 qualifying sales" in " ".join(creators.caveats)
+
+    def test_the_open_dataset_is_labelled_historical(self):
+        """Importing 2023 prices as though they were current would poison every
+        statistic and anomaly the platform computes."""
+        dataset = BY_SLUG["amazon_reviews_2023"]
+        assert dataset.credentials == ()
+        assert any("historical" in caveat.lower() for caveat in dataset.caveats)
 
     def test_amazon_and_walmart_are_honest_about_the_barrier(self):
         for slug in ("amazon", "walmart"):
@@ -436,3 +474,124 @@ class TestRegistryWithLivePlatforms:
         assert ebay_provider.is_live is True
         assert ebay_provider.is_configured is False
         assert "developer.ebay.com" in (ebay_provider.configuration_note or "")
+
+
+class TestRealDataSwitch:
+    """Switching to real data must be one line of config, and must not lie.
+
+    The failure mode worth guarding against is not "the key is missing". It is a
+    provider that silently serves fixture data while the interface says the
+    numbers came from a market. Every assertion here is about that.
+    """
+
+    def test_the_free_preset_registers_the_two_providers_that_need_no_seller_account(self):
+        from app.services.providers.registry import build_registry
+
+        registry = build_registry(["free"])
+        slugs = {provider.slug for provider in registry.all()}
+        assert slugs == {"bestbuy", "ebay"}
+        assert all(provider.is_live for provider in registry.all())
+
+    def test_a_live_provider_without_a_key_refuses_rather_than_falling_back(self):
+        """A silent fallback would put fixture prices behind a live label."""
+        import asyncio
+
+        from app.core.errors import ProviderNotConfiguredError
+        from app.services.providers.registry import build_registry
+
+        registry = build_registry(["free"])
+        for provider in registry.all():
+            assert provider.is_configured is False
+            with pytest.raises(ProviderNotConfiguredError):
+                asyncio.run(provider.search_products("headphones", limit=1))
+
+    def test_the_refusal_says_exactly_what_to_get_and_where(self):
+        from app.services.providers.registry import build_registry
+
+        registry = build_registry(["free"])
+        notes = {provider.slug: provider.configuration_note or "" for provider in registry.all()}
+        assert "BESTBUY_API_KEY" in notes["bestbuy"]
+        assert "developer.bestbuy.com" in notes["bestbuy"]
+        assert "EBAY_CLIENT_ID" in notes["ebay"]
+        assert "developer.ebay.com" in notes["ebay"]
+
+    def test_a_fixture_provider_never_claims_to_be_live(self):
+        from app.services.providers.registry import build_registry
+
+        registry = build_registry(["mock"])
+        for provider in registry.all():
+            assert provider.is_live is False
+            assert provider.kind == "fixture"
+
+    def test_an_observation_records_which_kind_of_provider_wrote_it(self, session, auth):
+        """The flag is set from the provider's own liveness, not from its name."""
+        from app.domains.catalog import service as catalog
+        from app.models.catalog import MarketplaceListing
+
+        listing = MarketplaceListing(
+            organization_id=auth.organization_id,
+            marketplace="amazon",
+            external_id="B0TEST0001",
+            title="Test",
+        )
+        session.add(listing)
+        session.flush()
+
+        fixture = catalog.observation_stamp(session, listing, provider="mock_amazon")
+        assert fixture.is_simulated is True
+
+        live = catalog.observation_stamp(session, listing, provider="bestbuy", is_simulated=False)
+        assert live.is_simulated is False
+
+        unknown = catalog.observation_stamp(session, listing, provider="not_registered")
+        assert unknown.is_simulated is True, (
+            "an unknown provider must be treated as simulated: assuming it was a real "
+            "market observation is the error that contaminates the dataset"
+        )
+
+
+class TestSandboxIsNotAMarketObservation:
+    """A sandbox exercises the real integration and invents the prices.
+
+    Both halves matter. Reporting it as live would put invented figures into the
+    record labelled as market data; reporting it as a fixture would hide that
+    the transport, the OAuth flow and the payload contract are genuinely proven.
+    """
+
+    def test_sandbox_reports_itself_as_sandbox(self):
+        from app.services.providers.ebay import EbayProvider
+
+        provider = EbayProvider(client_id="id", client_secret="secret", environment="sandbox")
+        assert provider.kind == "sandbox"
+        assert provider.is_live is False
+        assert "sandbox.ebay.com" in provider.base_url
+
+    def test_production_reports_itself_as_live(self):
+        from app.services.providers.ebay import EbayProvider
+
+        provider = EbayProvider(
+            client_id="id", client_secret="secret", environment="production"
+        )
+        assert provider.kind == "live"
+        assert provider.is_live is True
+        assert provider.base_url == "https://api.ebay.com"
+
+    def test_everything_a_sandbox_writes_is_recorded_as_simulated(self, session, auth):
+        """The lever the honesty of the whole history layer hangs on.
+
+        ``observation_stamp`` derives ``is_simulated`` from ``is_live``, so this
+        one property decides whether a sandbox price can ever be counted as a
+        measurement anywhere downstream.
+        """
+        from app.services.providers.ebay import EbayProvider
+
+        sandbox = EbayProvider(client_id="id", client_secret="secret", environment="sandbox")
+        assert not sandbox.is_live, "is_simulated is derived from this"
+
+    def test_the_note_says_the_prices_are_invented(self):
+        from app.services.providers.ebay import EbayProvider
+
+        provider = EbayProvider(client_id="id", client_secret="secret", environment="sandbox")
+        note = provider.configuration_note or ""
+        assert "invented" in note
+        assert "simulated" in note

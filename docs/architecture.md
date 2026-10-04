@@ -127,7 +127,10 @@ every route.
 Every timestamp is timezone-aware UTC and every wall-clock read goes through
 `core/clock.utcnow()`. Observation tables are append-only. Together these are
 what make it possible to ask "what did we know at time T" without look-ahead
-bias, which is the prerequisite for the backtesting in spec §30.
+bias, and `domains/backtest` is what asks it: every analysis loader takes an
+`as_of` and truncates to it, so a replay sees exactly what was recorded by the
+simulated day and nothing later. See `docs/autonomy.md` for what a replay does
+and does not claim.
 
 ## Scheduling
 

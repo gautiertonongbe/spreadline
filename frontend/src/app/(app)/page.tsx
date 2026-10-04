@@ -15,6 +15,88 @@ import { money, percent, score } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * What to do next, in one line.
+ *
+ * A dashboard of counters tells an operator how the system is doing. It does
+ * not tell them what to do with the next hour, and that is the question they
+ * actually opened the tab with. This band answers it from the same stored
+ * numbers the counters below are built from, and links straight into the
+ * filtered queue rather than leaving the reader to assemble the filter.
+ */
+function Briefing({
+  buy,
+  review,
+  expectedProfit,
+  capitalRequired,
+}: {
+  buy: number;
+  review: number;
+  expectedProfit: string;
+  capitalRequired: string;
+}) {
+  if (buy === 0 && review === 0) {
+    return (
+      <section className="rounded-xl border border-border bg-surface px-6 py-5 shadow-card">
+        <div className="label">Now</div>
+        <p className="mt-2 max-w-2xl text-[0.9375rem] leading-relaxed text-secondary">
+          Nothing is waiting on a decision. Analyse a product to add one.
+        </p>
+        <Link
+          href="/analyze"
+          className="mt-3 inline-block text-xs text-accent hover:underline"
+        >
+          Analyse a product
+        </Link>
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-xl border border-border bg-surface shadow-card">
+      <div className="px-6 pb-5 pt-5">
+        <div className="label">Now</div>
+        <p className="display mt-2 max-w-3xl text-[1.375rem] font-medium leading-snug tracking-tight text-primary">
+          {buy > 0
+            ? `${buy} candidate${buy === 1 ? "" : "s"} clear every threshold, for ${money(
+                expectedProfit,
+              )} of expected profit on ${money(capitalRequired)} of capital.`
+            : `Nothing clears every threshold. ${review} candidate${
+                review === 1 ? " is" : "s are"
+              } held for a human.`}
+        </p>
+        {buy > 0 && review > 0 && (
+          <p className="mt-2 text-[0.8125rem] text-muted">
+            {review} more {review === 1 ? "is" : "are"} held for a human, each with the
+            specific requirement it missed.
+          </p>
+        )}
+      </div>
+      <div className="flex flex-wrap gap-x-6 gap-y-2 border-t border-hairline px-6 py-3">
+        {buy > 0 && (
+          <Link
+            href="/opportunities?recommendation=buy"
+            className="text-xs text-accent hover:underline"
+          >
+            Review the {buy} that cleared
+          </Link>
+        )}
+        {review > 0 && (
+          <Link
+            href="/opportunities?recommendation=review"
+            className="text-xs text-accent hover:underline"
+          >
+            Open the review queue
+          </Link>
+        )}
+        <Link href="/capital" className="text-xs text-muted hover:text-primary">
+          Allocate capital across them
+        </Link>
+      </div>
+    </section>
+  );
+}
+
 export default async function DashboardPage() {
   let data: DashboardResponse;
   try {
@@ -36,6 +118,13 @@ export default async function DashboardPage() {
       <PageHeader
         title="Dashboard"
         description="Where inventory capital should go, and how well the platform has predicted that so far."
+      />
+
+      <Briefing
+        buy={buy}
+        review={review}
+        expectedProfit={opportunities.buy_expected_profit}
+        capitalRequired={opportunities.buy_capital_required}
       />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

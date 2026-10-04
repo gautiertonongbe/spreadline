@@ -227,8 +227,9 @@ class BestBuyProvider(MarketplaceProvider):
                 "commercial use requires a partner agreement with Best Buy."
             )
         return (
-            "Not configured: set BESTBUY_API_KEY. A free key is issued instantly at "
-            "developer.bestbuy.com with no seller account and no per-request cost."
+            "Not configured: set BESTBUY_API_KEY. The key is free and needs no seller "
+            "account, but the request is reviewed at developer.bestbuy.com before it "
+            "is issued."
         )
 
     async def _client_or_new(self) -> httpx.AsyncClient:

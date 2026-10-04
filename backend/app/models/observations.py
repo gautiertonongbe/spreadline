@@ -52,6 +52,34 @@ class PriceObservation(Base, UUIDPrimaryKeyMixin, OrganizationScopedMixin, Times
     #: differently and audits need to tell them apart.
     provider: Mapped[str] = mapped_column(String(64), nullable=False, default="mock")
     source: Mapped[str] = mapped_column(String(32), nullable=False, default="poll")
+    #: Identity captured with the snapshot, not looked up later.
+    #:
+    #: A price is only meaningful attached to the thing it was a price for, and
+    #: the rows it would otherwise be joined to are mutable: listings get
+    #: re-matched, products get merged. Denormalising the identifiers here makes
+    #: each observation self-describing, which is what turns a table of prices
+    #: into a dataset that survives its own catalogue.
+    #:
+    #: ``gtin`` is the normalised GTIN-14. UPC and EAN are GTINs in shorter
+    #: encodings and normalise into this column rather than getting one each,
+    #: because three columns holding the same number in three paddings is how
+    #: they end up disagreeing.
+    external_id: Mapped[str | None] = mapped_column(String(120), index=True)
+    gtin: Mapped[str | None] = mapped_column(String(14), index=True)
+    asin: Mapped[str | None] = mapped_column(String(16), index=True)
+    #: True when the observation came from a fixture rather than a market.
+    #: Recorded rather than inferred from the provider name: what a provider is
+    #: is the registry's to say, and a slug is not a fact about the data.
+    is_simulated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, index=True
+    )
+    #: 0..100 data-quality score at capture time, where one was computed.
+    quality_score: Mapped[Decimal | None] = mapped_column(Ratio)
+    #: When the provider was called, as distinct from when the market showed the
+    #: value. For a live poll they are the same; for a history backfill they are
+    #: not, and only one of them is a fact about the market.
+    retrieved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
 
 
 class DemandObservation(Base, UUIDPrimaryKeyMixin, OrganizationScopedMixin, TimestampMixin):
@@ -86,6 +114,34 @@ class DemandObservation(Base, UUIDPrimaryKeyMixin, OrganizationScopedMixin, Time
     )
     provider: Mapped[str] = mapped_column(String(64), nullable=False, default="mock")
     source: Mapped[str] = mapped_column(String(32), nullable=False, default="poll")
+    #: Identity captured with the snapshot, not looked up later.
+    #:
+    #: A price is only meaningful attached to the thing it was a price for, and
+    #: the rows it would otherwise be joined to are mutable: listings get
+    #: re-matched, products get merged. Denormalising the identifiers here makes
+    #: each observation self-describing, which is what turns a table of prices
+    #: into a dataset that survives its own catalogue.
+    #:
+    #: ``gtin`` is the normalised GTIN-14. UPC and EAN are GTINs in shorter
+    #: encodings and normalise into this column rather than getting one each,
+    #: because three columns holding the same number in three paddings is how
+    #: they end up disagreeing.
+    external_id: Mapped[str | None] = mapped_column(String(120), index=True)
+    gtin: Mapped[str | None] = mapped_column(String(14), index=True)
+    asin: Mapped[str | None] = mapped_column(String(16), index=True)
+    #: True when the observation came from a fixture rather than a market.
+    #: Recorded rather than inferred from the provider name: what a provider is
+    #: is the registry's to say, and a slug is not a fact about the data.
+    is_simulated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, index=True
+    )
+    #: 0..100 data-quality score at capture time, where one was computed.
+    quality_score: Mapped[Decimal | None] = mapped_column(Ratio)
+    #: When the provider was called, as distinct from when the market showed the
+    #: value. For a live poll they are the same; for a history backfill they are
+    #: not, and only one of them is a fact about the market.
+    retrieved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
 
 
 class CompetitionObservation(Base, UUIDPrimaryKeyMixin, OrganizationScopedMixin, TimestampMixin):
@@ -117,6 +173,34 @@ class CompetitionObservation(Base, UUIDPrimaryKeyMixin, OrganizationScopedMixin,
     )
     provider: Mapped[str] = mapped_column(String(64), nullable=False, default="mock")
     source: Mapped[str] = mapped_column(String(32), nullable=False, default="poll")
+    #: Identity captured with the snapshot, not looked up later.
+    #:
+    #: A price is only meaningful attached to the thing it was a price for, and
+    #: the rows it would otherwise be joined to are mutable: listings get
+    #: re-matched, products get merged. Denormalising the identifiers here makes
+    #: each observation self-describing, which is what turns a table of prices
+    #: into a dataset that survives its own catalogue.
+    #:
+    #: ``gtin`` is the normalised GTIN-14. UPC and EAN are GTINs in shorter
+    #: encodings and normalise into this column rather than getting one each,
+    #: because three columns holding the same number in three paddings is how
+    #: they end up disagreeing.
+    external_id: Mapped[str | None] = mapped_column(String(120), index=True)
+    gtin: Mapped[str | None] = mapped_column(String(14), index=True)
+    asin: Mapped[str | None] = mapped_column(String(16), index=True)
+    #: True when the observation came from a fixture rather than a market.
+    #: Recorded rather than inferred from the provider name: what a provider is
+    #: is the registry's to say, and a slug is not a fact about the data.
+    is_simulated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, index=True
+    )
+    #: 0..100 data-quality score at capture time, where one was computed.
+    quality_score: Mapped[Decimal | None] = mapped_column(Ratio)
+    #: When the provider was called, as distinct from when the market showed the
+    #: value. For a live poll they are the same; for a history backfill they are
+    #: not, and only one of them is a fact about the market.
+    retrieved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
 
 
 class ProviderRequest(Base, UUIDPrimaryKeyMixin, TimestampMixin):

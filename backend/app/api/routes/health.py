@@ -8,7 +8,7 @@ from fastapi import APIRouter
 from sqlalchemy import text
 
 from app.api.deps import DbSession
-from app.core.clock import utcnow
+from app.core.clock import iso_utc, utcnow
 from app.core.config import settings
 
 router = APIRouter(tags=["system"])
@@ -21,7 +21,7 @@ def health() -> dict[str, Any]:
         "status": "ok",
         "service": settings.app_name,
         "environment": settings.environment,
-        "time": utcnow().isoformat(),
+        "time": iso_utc(utcnow()),
     }
 
 
@@ -36,5 +36,5 @@ def ready(session: DbSession) -> dict[str, Any]:
     return {
         "status": "ok" if database == "ok" else "degraded",
         "database": database,
-        "time": utcnow().isoformat(),
+        "time": iso_utc(utcnow()),
     }

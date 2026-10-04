@@ -16,6 +16,8 @@ from app.core.config import settings
 from app.core.database import session_scope
 from app.core.logging import get_logger
 from app.domains.catalog import service as catalog
+from app.domains.history import capture
+from app.domains.history import service as history
 from app.domains.tenancy.service import bootstrap
 from app.models.catalog import MarketplaceListing
 from app.models.enums import Marketplace, OpportunityStatus
@@ -95,4 +97,90 @@ def register_jobs(scheduler: Scheduler) -> Scheduler:
             description="Re-poll listings behind live opportunities once their price TTL expires.",
         )
     )
+    if settings.history_capture_enabled:
+        scheduler.add_job(
+            JobDefinition(
+                key="refresh_universe",
+                func=refresh_universe,
+                interval_seconds=settings.history_refresh_interval_seconds,
+                description=(
+                    "Poll the tracked universe so Spreadline accumulates its own history."
+                ),
+            )
+        )
     return scheduler
+
+
+# --------------------------------------------------------- the tracked universe
+
+
+def refresh_universe() -> None:
+    """Poll the tracked universe so Spreadline keeps accumulating its own history."""
+    asyncio.run(_refresh_universe())
+
+
+async def _refresh_universe() -> dict[str, int]:
+    """One bounded pass over the listings that are due.
+
+    Bounded, prioritised and TTL-aware for the same reason throughout: provider
+    calls cost money and quota, and a scheduled job that can grow without limit
+    is a bill waiting to happen. A listing that keeps failing backs off rather
+    than being retried every run.
+
+    Each poll is one provider call whose answer is captured as history whether or
+    not anything else is interested in it today. That is the point of the layer:
+    the value of owning the data comes from having observed consistently, not
+    from having observed when something happened to ask.
+    """
+    if not settings.history_capture_enabled:
+        return {"polled": 0, "observations": 0, "failures": 0}
+
+    registry = get_registry()
+    polled = observations = failures = 0
+    with session_scope() as session:
+        auth = bootstrap(session)
+        due = history.due_for_refresh(
+            session, auth.organization_id, limit=settings.history_refresh_batch_size
+        )
+        for tracked in due:
+            try:
+                provider = registry.for_marketplace(
+                    Marketplace(tracked.marketplace), capability=ProviderCapability.PRODUCT
+                )
+                raw = await provider.get_product(tracked.external_id)
+            except Exception as exc:  # noqa: BLE001 - one listing must not stop the batch
+                history.record_attempt(tracked, succeeded=False, error=str(exc))
+                failures += 1
+                continue
+
+            captured = capture.capture_listing(
+                session,
+                auth.organization_id,
+                raw,
+                provider=provider.slug,
+                is_simulated=not provider.is_live,
+                source=capture.SOURCE_REFRESH,
+            )
+            if captured.errors:
+                history.record_attempt(tracked, succeeded=False, error=captured.errors[0])
+                failures += 1
+                continue
+
+            tracked.listing_id = captured.listing_id or tracked.listing_id
+            tracked.product_id = captured.product_id or tracked.product_id
+            history.record_attempt(tracked, succeeded=True, observations=captured.total)
+            polled += 1
+            observations += captured.total
+
+        logger.info(
+            "universe refresh complete",
+            extra={
+                "context": {
+                    "due": len(due),
+                    "polled": polled,
+                    "observations": observations,
+                    "failures": failures,
+                }
+            },
+        )
+    return {"polled": polled, "observations": observations, "failures": failures}

@@ -7,7 +7,7 @@ application remains the single owner of the vocabulary.
 
 from __future__ import annotations
 
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 
 
 class Marketplace(StrEnum):
@@ -98,6 +98,34 @@ class RiskLevel(StrEnum):
     @property
     def rank(self) -> int:
         return {"low": 0, "medium": 1, "high": 2, "critical": 3}[self.value]
+
+
+class RiskCategory(StrEnum):
+    """The kinds of risk Spreadline assesses separately.
+
+    They are kept apart because they fail differently and are mitigated
+    differently. A volatile exit price is waited out or hedged with a lower buy
+    price; a rejected product match is not a risk to be priced, it is a reason
+    not to buy at all; thin data is fixed by fetching more. Averaging them into
+    one number loses exactly the information that decides what to do next.
+    """
+
+    #: How the prices themselves move: volatility, trend, anomalies, baselines.
+    PRICE = "price"
+    #: How many others are selling it, and whether that number is growing.
+    COMPETITION = "competition"
+    #: Whether it sells at all, how fast, and whether that is slowing.
+    DEMAND = "demand"
+    #: Whether there is stock to buy, and how much.
+    INVENTORY = "inventory"
+    #: Whether the two listings are the same product.
+    PRODUCT_MATCH = "product_match"
+    #: Whether the evidence behind the other categories is present and fresh.
+    DATA_QUALITY = "data_quality"
+    #: Gating, restricted brands, categories with high return or counterfeit rates.
+    BRAND_CATEGORY = "brand_category"
+    #: The economics themselves: no profit, or a margin too thin to survive a move.
+    ECONOMICS = "economics"
 
 
 class Severity(StrEnum):
@@ -226,3 +254,109 @@ class DataQualityDimension(StrEnum):
     COMPETITION = "competition"
     HISTORICAL_DATA = "historical_data"
     AVAILABILITY = "availability"
+
+class AutonomyLevel(IntEnum):
+    """How much Spreadline is allowed to do without a human.
+
+    Autonomy is earned, not assumed. Each level is unlocked by demonstrated
+    performance against explicit criteria, never by elapsed time and never
+    automatically: the gate reports eligibility, a person acts on it.
+    """
+
+    OBSERVE = 0
+    RECOMMEND = 1
+    HUMAN_APPROVAL = 2
+    CONTROLLED = 3
+    LIMITED = 4
+    EXPANDED = 5
+    PORTFOLIO = 6
+    FULL = 7
+
+    @property
+    def label(self) -> str:
+        return {
+            0: "Observe",
+            1: "Recommend",
+            2: "Human approval",
+            3: "Controlled autonomy",
+            4: "Limited autonomy",
+            5: "Expanded autonomy",
+            6: "Portfolio autonomy",
+            7: "Full authorised autonomy",
+        }[int(self)]
+
+    @property
+    def deploys_capital(self) -> bool:
+        """Whether this level may commit capital without a human decision."""
+        return int(self) >= int(AutonomyLevel.CONTROLLED)
+
+
+class AgentStage(StrEnum):
+    """The stages of one decision, named for the role each plays.
+
+    These are the existing deterministic engines under the names an investment
+    organisation would use for them. Naming them is what makes a decision
+    auditable stage by stage, and what lets two stages disagree in a way the
+    system can escalate rather than average away.
+    """
+
+    SCOUT = "scout"
+    UNDERWRITING = "underwriting"
+    RISK = "risk"
+    ELIGIBILITY = "eligibility"
+    CAPITAL = "capital"
+    POLICY = "policy"
+    DECISION = "decision"
+    INVENTORY = "inventory"
+    SELL = "sell"
+    OUTCOME = "outcome"
+
+
+class AgentVerdict(StrEnum):
+    """What one stage concluded."""
+
+    PROCEED = "proceed"
+    REVIEW = "review"
+    REJECT = "reject"
+    #: The stage could not reach a conclusion, which is not the same as rejecting.
+    INCONCLUSIVE = "inconclusive"
+
+
+class ExecutionMode(StrEnum):
+    """Whether a decision moves real money."""
+
+    #: Analysis only; no position is opened at all.
+    OBSERVE = "observe"
+    #: A position is recorded as if capital had been deployed, and tracked
+    #: against real market outcomes, but nothing was bought.
+    SHADOW = "shadow"
+    #: Real capital, human-executed order.
+    LIVE = "live"
+
+
+class PositionStatus(StrEnum):
+    OPEN = "open"
+    CLOSED = "closed"
+    CANCELLED = "cancelled"
+
+
+class BreakerState(StrEnum):
+    OK = "ok"
+    TRIPPED = "tripped"
+
+
+class AutonomyEventType(StrEnum):
+    POLICY_CHANGED = "policy_changed"
+    LEVEL_CHANGED = "level_changed"
+    EXPERIMENT_STARTED = "experiment_started"
+    EXPERIMENT_STOPPED = "experiment_stopped"
+    DECISION_AUTHORIZED = "decision_authorized"
+    DECISION_BLOCKED = "decision_blocked"
+    DECISION_ESCALATED = "decision_escalated"
+    PLAN_COMMITTED = "plan_committed"
+    EXECUTION_RECORDED = "execution_recorded"
+    BREAKER_TRIPPED = "breaker_tripped"
+    BREAKER_RESET = "breaker_reset"
+    EMERGENCY_STOP = "emergency_stop"
+    EMERGENCY_STOP_CLEARED = "emergency_stop_cleared"
+    HUMAN_OVERRIDE = "human_override"

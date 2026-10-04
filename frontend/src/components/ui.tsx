@@ -9,7 +9,13 @@
 import type { ReactNode } from "react";
 import { clsx } from "clsx";
 
-import { NOT_AVAILABLE } from "@/lib/format";
+import {
+  NOT_AVAILABLE,
+  isOpenableUrl,
+  money as formatMoney,
+  percent as formatPercent,
+  recommendationLabel,
+} from "@/lib/format";
 
 export function PageHeader({
   title,
@@ -132,7 +138,7 @@ export function RecommendationBadge({ value }: { value: string }) {
         RECOMMENDATION_STYLES[value] ?? "bg-raised text-muted ring-border",
       )}
     >
-      {value}
+      {recommendationLabel(value)}
     </span>
   );
 }
@@ -347,6 +353,283 @@ export function Button({
     >
       {children}
     </button>
+  );
+}
+
+/**
+ * The call.
+ *
+ * This is the block the product is for. A reviewer reading one screen should be
+ * able to answer three questions without scrolling: what is the call, what do I
+ * make if it is right, and what is stopping it. Everything that explains how
+ * the call was reached lives below it, folded away, because an explanation
+ * nobody opens is not transparency, it is noise.
+ *
+ * The numbers here are always three. Four is a table, and a table is what this
+ * block exists to replace.
+ */
+export function Verdict({
+  recommendation,
+  headline,
+  numbers,
+  blockers = [],
+  meta,
+  actions,
+}: {
+  recommendation: string;
+  headline?: string | null;
+  numbers: {
+    label: string;
+    value: ReactNode;
+    hint?: string;
+    tone?: "default" | "buy" | "pass" | "muted";
+  }[];
+  blockers?: { text: string; hard?: boolean }[];
+  meta?: ReactNode;
+  actions?: ReactNode;
+}) {
+  const accent =
+    {
+      buy: "border-buy/35 bg-buy/[0.07]",
+      review: "border-review/35 bg-review/[0.07]",
+      pass: "border-pass/30 bg-pass/[0.05]",
+    }[recommendation] ?? "border-border bg-surface";
+
+  const word =
+    { buy: "text-buy", review: "text-review", pass: "text-pass" }[recommendation] ??
+    "text-primary";
+
+  return (
+    <section className={clsx("rounded-xl border shadow-card", accent)}>
+      <div className="flex flex-wrap items-start justify-between gap-5 px-6 pt-6">
+        <div className="min-w-0">
+          <div className="label">The call</div>
+          <div
+            className={clsx(
+              "display mt-1.5 text-[2.5rem] font-medium leading-none tracking-[-0.02em]",
+              word,
+            )}
+          >
+            {recommendationLabel(recommendation, "sentence")}
+          </div>
+          {headline && (
+            <p className="mt-3 max-w-xl text-[0.875rem] leading-relaxed text-secondary">
+              {headline}
+            </p>
+          )}
+          {meta && <div className="mt-3 flex flex-wrap items-center gap-2">{meta}</div>}
+        </div>
+        {actions && <div className="shrink-0">{actions}</div>}
+      </div>
+
+      <div className="mt-6 grid gap-px border-t border-border bg-border sm:grid-cols-3">
+        {numbers.map((item) => (
+          <div key={item.label} className="bg-surface px-6 py-5">
+            <div className="label">{item.label}</div>
+            <div
+              className={clsx(
+                "display mt-2 text-[1.75rem] font-medium leading-none tracking-tight",
+                {
+                  default: "text-primary",
+                  buy: "text-buy",
+                  pass: "text-pass",
+                  muted: "text-muted",
+                }[item.tone ?? "default"],
+              )}
+            >
+              {item.value}
+            </div>
+            {item.hint && (
+              <div className="mt-2 text-2xs leading-snug text-muted">{item.hint}</div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {blockers.length > 0 && (
+        <div className="space-y-1.5 border-t border-border px-6 py-4">
+          <div className="label">What is stopping it</div>
+          {blockers.slice(0, 3).map((blocker) => (
+            <div key={blocker.text} className="flex gap-2.5 text-[0.8125rem] leading-snug">
+              <span
+                className={clsx(
+                  "mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full",
+                  blocker.hard ? "bg-pass" : "bg-review",
+                )}
+              />
+              <span className="text-secondary">{blocker.text}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+export interface MarketSideView {
+  marketplace: string;
+  price: string | null;
+  title?: string | null;
+  externalId?: string | null;
+  availability?: string | null;
+  sellerCount?: number | null;
+  salesRank?: number | null;
+  url?: string | null;
+}
+
+/**
+ * The two markets, side by side, with the identity between them.
+ *
+ * This strip is the reason the product exists. Answering "what does it cost
+ * there, what does it sell for here, and are they the same thing" normally
+ * means a retailer tab, a marketplace tab, a rank history tab and a fee
+ * calculator, and the answer assembled that way is a guess about two similar
+ * titles. The confidence figure in the middle is what makes the comparison
+ * legitimate, which is why it sits between the two prices rather than in a
+ * panel further down.
+ */
+export function MarketStrip({
+  source,
+  target,
+  matchConfidence,
+}: {
+  source: MarketSideView | null;
+  target: MarketSideView | null;
+  matchConfidence: string | null;
+}) {
+  const live = isOpenableUrl(source?.url) || isOpenableUrl(target?.url);
+  const side = (
+    role: string,
+    caption: string,
+    action: string,
+    listing: MarketSideView | null,
+  ) => (
+    <div className="flex flex-col bg-surface px-5 py-4">
+      <div className="label">{role}</div>
+      <div className="mt-1.5 text-[0.8125rem] font-medium text-primary">
+        {listing?.marketplace ?? "not available"}
+      </div>
+      <div className="numeric mt-2 text-[1.75rem] leading-none text-primary">
+        <Value>{listing ? formatMoney(listing.price) : NOT_AVAILABLE}</Value>
+      </div>
+      <div className="mt-1 text-2xs text-faint">{caption}</div>
+      {listing?.title && (
+        <div className="mt-2.5 truncate text-xs text-muted">{listing.title}</div>
+      )}
+      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-2xs text-faint">
+        {listing?.externalId && <span className="font-mono">{listing.externalId}</span>}
+        {listing?.availability && <span>{listing.availability.replace(/_/g, " ")}</span>}
+        {listing?.sellerCount !== null && listing?.sellerCount !== undefined && (
+          <span>{listing.sellerCount} sellers</span>
+        )}
+        {listing?.salesRank ? <span>Rank {listing.salesRank.toLocaleString()}</span> : null}
+      </div>
+      {isOpenableUrl(listing?.url) ? (
+        <a
+          href={listing.url}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="mt-3.5 inline-flex w-fit items-center gap-1.5 rounded border border-accent/30 bg-accent/10 px-3 py-1.5 text-2xs font-medium text-accent transition hover:bg-accent/20"
+        >
+          {action}
+          <span aria-hidden="true">&rarr;</span>
+        </a>
+      ) : (
+        <span className="mt-3.5 inline-flex w-fit items-center rounded border border-dashed border-border px-3 py-1.5 text-2xs text-faint">
+          No live listing to open
+        </span>
+      )}
+    </div>
+  );
+
+  return (
+    <div>
+      <div className="grid gap-px overflow-hidden rounded-lg border border-border bg-border shadow-card sm:grid-cols-[1fr_150px_1fr]">
+        {side(
+          "Buy it here",
+          "what you pay today",
+          `Open on ${source?.marketplace ?? "the site"}`,
+          source,
+        )}
+        <div className="flex flex-col items-center justify-center bg-surface px-4 py-4 text-center">
+          <div className="label">Same item?</div>
+          <div className="numeric mt-1.5 text-base text-primary">
+            {formatPercent(matchConfidence, 0)}
+          </div>
+          <div className="mt-1 text-3xs uppercase tracking-label text-faint">sure</div>
+        </div>
+        {side(
+          "Sell it here",
+          "what it sells for today",
+          `Open on ${target?.marketplace ?? "the site"}`,
+          target,
+        )}
+      </div>
+      {/* Asked often enough to belong on the screen rather than in a help page.
+          Spreadline does not automate retailer checkout, by design and by
+          policy, so the order is placed on the retailer's own site. */}
+      <p className="mt-2 text-2xs leading-relaxed text-faint">
+        {live
+          ? "Spreadline does not place orders. Open the listing and buy it on the retailer's own site, then come back and record what you paid so the prediction can be checked against what actually happened."
+          : "These are fixture products, so there is no real listing behind either price. Connect a provider and the links open the retailer's own page, where the order is placed: Spreadline does not place orders itself."}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Progressive disclosure, built on a native `details` element.
+ *
+ * Everything the platform computed is still on the page and one click away.
+ * Nothing is removed, nothing is summarised away, and none of it loads behind a
+ * request that could fail. It just starts closed, because the score breakdown
+ * matters to the person auditing a call and not to the person making one.
+ */
+export function Disclosure({
+  title,
+  summary,
+  children,
+  defaultOpen = false,
+}: {
+  title: string;
+  /** One line, visible while closed: enough to know whether to open it. */
+  summary?: ReactNode;
+  children: ReactNode;
+  defaultOpen?: boolean;
+}) {
+  return (
+    <details
+      open={defaultOpen}
+      className="group overflow-hidden rounded-lg border border-border bg-surface shadow-card"
+    >
+      <summary className="flex cursor-pointer select-none items-center gap-3 px-5 py-3.5 transition hover:bg-raised/60">
+        <svg
+          viewBox="0 0 12 12"
+          width="10"
+          height="10"
+          fill="none"
+          aria-hidden="true"
+          className="shrink-0 text-faint transition-transform duration-150 group-open:rotate-90"
+        >
+          <path
+            d="M4 2.5 8 6l-4 3.5"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        <span className="display text-[0.9375rem] font-medium tracking-tight text-primary">
+          {title}
+        </span>
+        {summary && (
+          <span className="ml-auto truncate text-2xs text-muted group-open:hidden">
+            {summary}
+          </span>
+        )}
+      </summary>
+      <div className="border-t border-hairline px-5 py-4">{children}</div>
+    </details>
   );
 }
 

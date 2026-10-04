@@ -8,7 +8,19 @@ from typing import Any
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import analytics, bulk, health, opportunities, portfolio, products, simulate
+from app.api.routes import (
+    analytics,
+    auth,
+    autonomy,
+    bulk,
+    execution,
+    health,
+    history,
+    opportunities,
+    portfolio,
+    products,
+    simulate,
+)
 from app.core.config import settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging, get_logger
@@ -85,7 +97,12 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+        # PUT was missing here, so the browser's preflight for a policy update
+        # was refused and the request never left the page: the form appeared to
+        # do nothing while the API was perfectly willing to serve it. Listed
+        # explicitly rather than with a wildcard so adding a verb stays a
+        # deliberate act.
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type"],
     )
     register_exception_handlers(app)
@@ -106,12 +123,16 @@ def create_app() -> FastAPI:
     # client that first used them.
     api = APIRouter(prefix=settings.api_v1_prefix)
     api.include_router(health.router)
+    api.include_router(auth.router)
     api.include_router(products.router)
     api.include_router(opportunities.router)
     api.include_router(bulk.router)
     api.include_router(simulate.router)
     api.include_router(portfolio.router)
     api.include_router(analytics.router)
+    api.include_router(history.router)
+    api.include_router(autonomy.router)
+    api.include_router(execution.router)
     app.include_router(api)
 
     # Unversioned liveness, for load balancers that will not be told about /api/v1.

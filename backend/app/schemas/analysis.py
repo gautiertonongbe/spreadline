@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.models.enums import Marketplace, SourcingChannel
+from app.models.enums import Availability, Condition, Marketplace, SourcingChannel
 
 
 class AnalyzeRequest(BaseModel):
@@ -95,3 +95,83 @@ class CapitalSimulationRequest(BaseModel):
     opportunity_ids: list[str] | None = None
     save: bool = False
     name: str | None = None
+
+
+class ManualSideRequest(BaseModel):
+    """One side of a pair, as a person reads it off the product page.
+
+    Only four fields are required, because a person typing at a keyboard will
+    abandon a form that demands twelve. Everything else improves the answer and
+    the response says which omissions cost what.
+    """
+
+    marketplace: Marketplace
+    #: The ASIN, the item number, whatever the URL ends in. It is how the same
+    #: product is recognised the next time it is entered.
+    external_id: str = Field(min_length=1, max_length=64)
+    title: str = Field(min_length=1, max_length=512)
+    price: Decimal = Field(gt=0)
+
+    url: str | None = Field(default=None, max_length=1000)
+    brand: str | None = Field(default=None, max_length=200)
+    model: str | None = Field(default=None, max_length=120)
+    category: str | None = Field(default=None, max_length=120)
+    shipping: Decimal = Field(default=Decimal("0"), ge=0)
+    condition: Condition = Condition.NEW
+    availability: Availability = Availability.UNKNOWN
+
+    #: gtin, upc, ean, isbn, asin or mpn. An identifier on both sides is what
+    #: lets the match clear a policy threshold; titles alone cap at 60%.
+    identifiers: dict[str, str] = Field(default_factory=dict)
+
+    #: Absent rather than zero when not supplied, so demand and competition
+    #: report no evidence instead of a flattering default.
+    sales_rank: int | None = Field(default=None, ge=1)
+    rank_category: str | None = Field(default=None, max_length=120)
+    seller_count: int | None = Field(default=None, ge=0)
+    offer_count: int | None = Field(default=None, ge=0)
+    review_count: int | None = Field(default=None, ge=0)
+    rating: Decimal | None = Field(default=None, ge=0, le=5)
+    quantity_available: int | None = Field(default=None, ge=0)
+    note: str | None = Field(default=None, max_length=500)
+
+
+class ManualAnalyzeRequest(BaseModel):
+    """Analyse a pair somebody looked up by hand.
+
+    No provider is called. A person read two public pages and typed what they
+    saw, which is not scraping and needs no credential, and the same engine then
+    judges it by the same standard it judges an API-fed pair by.
+    """
+
+    source: ManualSideRequest
+    target: ManualSideRequest
+    sourcing_channel: SourcingChannel = SourcingChannel.ONLINE_ARBITRAGE
+    fee_overrides: dict[str, Any] | None = None
+    run_stress_test: bool = True
+    persist: bool = True
+
+    @model_validator(mode="after")
+    def _distinct_markets(self) -> ManualAnalyzeRequest:
+        if self.source.marketplace == self.target.marketplace:
+            raise ValueError(
+                "The two sides have to be different marketplaces. Buying and selling "
+                "in the same market is not a spread, it is a round trip."
+            )
+        return self
+
+
+class PasteRequest(BaseModel):
+    """A product page somebody copied and pasted.
+
+    Deliberately not stored anywhere. A signed-in page carries the reader's
+    name, address, cart and customer id, so the text is parsed in memory and
+    discarded; only the fields the person confirms are ever written.
+    """
+
+    #: Generous, because "select all" on a product page is a lot of navigation
+    #: and footer either side of the part that matters. Bounded, because an
+    #: unbounded text field is a way to fill a database.
+    text: str = Field(min_length=1, max_length=400_000)
+    #: Optional. Detected from the text when not given.
+    marketplace: Marketplace | None = None
